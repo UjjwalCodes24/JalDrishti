@@ -1,0 +1,5 @@
+import { Panel } from '../ui'
+
+export default function RoutePlanner({ locations, startId, destinationId, onStartChange, onDestinationChange }) {
+  return <Panel className="route-planner"><div className="panel-heading"><div><span className="eyebrow">Navigation map interface</span><h2>Plan around flood exposure</h2></div><span className="prototype-label">DEMO DROPDOWNS</span></div><div className="route-select-grid"><label><span>START LOCATION</span><select value={startId} onChange={(event) => onStartChange(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label><label><span>DESTINATION</span><select value={destinationId} onChange={(event) => onDestinationChange(event.target.value)}>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label></div><p className="route-planner-note">Routing results are generated from the simulated Mumbai road network and the selected flood-engine forecast. No live Google Maps or navigation API is connected.</p></Panel>
+}
