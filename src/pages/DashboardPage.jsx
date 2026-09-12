@@ -1,60 +1,74 @@
 import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
-import wards from '../data/wards.json'
-import terrain from '../data/terrain.json'
-import drainageNetwork from '../data/drainageNetwork.json'
+import { useRegion } from '../context/useRegion'
+import wardsData from '../data/wards.json'
+import terrainData from '../data/terrain.json'
+import drainageNetworkData from '../data/drainageNetwork.json'
 import InteractiveRiskMap from '../components/InteractiveRiskMap'
-import { floodForecast, getFloodPrediction } from '../services/floodEngine'
+import { getFloodForecast, getFloodPrediction } from '../services/floodEngine'
 import { getExplainabilityData } from '../services/explainabilityService'
-import { Panel, PageHeader, RiskBadge } from '../components/ui'
+import { PageHeader, Panel, RiskBadge } from '../components/ui'
 
 const quickModules = [
-  { icon: '🌧', title: 'Flood Risk Map', metric: '3 hotspots · 4 wards', label: 'Open Map', to: '/risk-map', tone: 'teal' },
-  { icon: '🚑', title: 'Flood-Safe Routes', metric: '2 passable corridors', label: 'Plan Route', to: '/safe-routes', tone: 'blue' },
+  { icon: '🌧', title: 'Flood Risk Map', metric: 'Hotspots & wards', label: 'Open Map', to: '/risk-map', tone: 'teal' },
+  { icon: '🚑', title: 'Flood-Safe Routes', metric: 'Passable corridors', label: 'Plan Route', to: '/safe-routes', tone: 'blue' },
   { icon: '⏱', title: 'AI Nowcast', metric: '3-hour forecast', label: 'View Forecast', to: '/nowcast', tone: 'cyan' },
   { icon: '🔍', title: 'Explainable AI', metric: 'Flood cause analysis', label: 'Explain Why', to: '/explainable-ai', tone: 'purple' },
   { icon: '🚨', title: 'Emergency Response', metric: 'Response units', label: 'Deploy Units', to: '/emergency-response', tone: 'red' },
   { icon: '📊', title: 'Situation Reports', metric: 'Current situation', label: 'View Report', to: '/dashboard', tone: 'slate' },
 ]
 
-const dataSources = [
-  { name: 'IMD Rainfall', status: 'Demo data', statusType: 'demo', detail: 'Rainfall observations' },
-  { name: 'Doppler Weather Radar', status: 'Simulation', statusType: 'sim', detail: 'Radar rainfall input' },
-  { name: 'Digital Elevation Model', status: 'Loaded', statusType: 'loaded', detail: '3 m terrain data' },
-  { name: 'Drainage Network', status: 'Loaded', statusType: 'loaded', detail: '12 monitored nodes' },
-  { name: 'AI Nowcast', status: 'Available', statusType: 'avail', detail: '0–3 hour forecast' },
-  { name: 'Safe Routes', status: 'Available', statusType: 'avail', detail: '10 monitored links' },
-]
-
 function DashboardPage() {
+  const { selectedRegion, currentRegion } = useRegion()
   const [selectedTime, setSelectedTime] = useState('NOW')
   const [selectedWard, setSelectedWard] = useState('')
   const [focusedStreet, setFocusedStreet] = useState('')
   const [activeMapLayers, setActiveMapLayers] = useState({ risk: true, depth: true, network: true, capacity: true, terrain: false, runoff: true })
-  const prediction = getFloodPrediction(selectedTime)
+
+  const regionWards = currentRegion?.wards || wardsData
+  const regionTerrain = currentRegion?.terrain || terrainData.zones
+  const regionDrainage = currentRegion?.drainageNetwork || drainageNetworkData
+  const dataSources = currentRegion?.dataSources || []
+
+  const forecast = useMemo(() => getFloodForecast(selectedRegion), [selectedRegion])
+  const prediction = useMemo(() => getFloodPrediction(selectedTime, selectedRegion), [selectedTime, selectedRegion])
   const sortedStreets = useMemo(() => [...prediction.streets].sort((a, b) => b.waterDepth - a.waterDepth), [prediction.streets])
   const priorityStreets = sortedStreets.slice(0, 3)
+  
+  // Purely derived state: handles region switching gracefully without cascading renders
   const focusedStreetObj = prediction.streets.find((street) => street.id === focusedStreet)
   const activeStreet = focusedStreetObj || priorityStreets[0] || prediction.streets[0]
+  const activeWard = regionWards.some((w) => w.id === selectedWard) ? selectedWard : ''
+  const activeStreetId = activeStreet?.id || currentRegion?.primaryFocusStreet
+  
   const criticalZones = prediction.streets.filter((street) => street.risk === 'CRITICAL').length
   const affectedRoads = prediction.streets.filter((street) => street.waterDepth >= 15).length
   const status = prediction.highestWaterDepth >= 30 ? 'CRITICAL' : prediction.highestWaterDepth >= 15 ? 'HIGH' : 'MODERATE'
   const setHorizon = (time) => setSelectedTime(time)
   const toggleMapLayer = (layer) => setActiveMapLayers((current) => ({ ...current, [layer]: !current[layer] }))
-  const explainability = getExplainabilityData(activeStreet?.id || 'ST-KUR-01', selectedTime)
+  
+  const explainability = getExplainabilityData(activeStreetId, selectedTime, selectedRegion)
+
+
+
   const topDrivers = explainability.factors.slice(0, 4)
   const primaryDriver = explainability.factors[0]
+
+  const topPriorityAction = currentRegion?.priorityActions?.[priorityStreets[0]?.id]?.action ||
+    (priorityStreets[0]?.waterDepth >= 30
+      ? 'Deploy auxiliary dewatering pumps and activate traffic diversions.'
+      : 'Maintain normal monitoring and review upcoming forecast horizon.')
 
   return (
     <>
       <PageHeader
-        eyebrow="URBAN FLOOD MONITORING"
+        eyebrow={currentRegion?.kicker || "URBAN FLOOD MONITORING"}
         title="Flood Intelligence Dashboard"
-        description="Monitor rainfall, drainage conditions and flood risk across the city."
+        description={currentRegion?.subtitle || "Monitor rainfall, drainage conditions and flood risk across the city."}
         action={
           <div className="header-status-indicator">
             <span className="status-dot" />
-            <span>Live monitoring</span>
+            <span>Demonstration scenario</span>
           </div>
         }
       />
@@ -78,14 +92,14 @@ function DashboardPage() {
             <span className="telemetry-divider" aria-hidden="true" />
             <div className="telemetry-item">
               <span className="telemetry-label">Affected location</span>
-              <strong className="telemetry-value">{priorityStreets[0]?.name || 'Kurla'}</strong>
+              <strong className="telemetry-value">{priorityStreets[0]?.name || 'Primary Hotspot'}</strong>
             </div>
           </div>
         </div>
         <div className="status-banner-action">
           <div className="action-content">
             <span className="action-label">ACTION REQUIRED:</span>
-            <span className="action-text">Deploy auxiliary dewatering pumps and activate traffic diversions.</span>
+            <span className="action-text">{topPriorityAction}</span>
           </div>
           <Link to="/emergency-response" className="action-link-btn">
             Emergency Response &rarr;
@@ -109,7 +123,7 @@ function DashboardPage() {
             </div>
           </div>
           <div className="kpi-card-footer">
-            IMD / Doppler Radar
+            IMD / Radar (Simulated)
           </div>
         </div>
 
@@ -145,7 +159,7 @@ function DashboardPage() {
             </div>
           </div>
           <div className="kpi-card-footer">
-            High backflow risk
+            {prediction.drainage.backflowProbability >= 0.6 ? 'High backflow risk' : 'Moderate network flow'}
           </div>
         </div>
 
@@ -163,7 +177,7 @@ function DashboardPage() {
             </div>
           </div>
           <div className="kpi-card-footer">
-            2 safe corridors open
+            Monitored corridors open
           </div>
         </div>
       </div>
@@ -180,22 +194,26 @@ function DashboardPage() {
           </div>
           <div className="dashboard-map-hero">
             <InteractiveRiskMap
-              wards={wards}
-              selectedWard={selectedWard}
+              wards={regionWards}
+              selectedWard={activeWard}
               onSelectWard={setSelectedWard}
               prediction={prediction}
+
               activeLayers={activeMapLayers}
-              terrainZones={terrain.zones}
-              drainageNetwork={drainageNetwork}
+              terrainZones={regionTerrain}
+              drainageNetwork={regionDrainage}
               focusedStreet={focusedStreet}
               onSelectStreet={setFocusedStreet}
               digitalTwin
+              center={currentRegion?.center || [19.076, 72.8777]}
+              zoom={currentRegion?.zoom || 11}
+              wardCoordinates={currentRegion?.wardCoordinates}
             />
             
             {/* Top-Left: Live Telemetry / Monitoring Status */}
             <div className="map-glass map-status-overlay">
-              <span className="map-status-title"><span className="status-dot" /> Live monitoring</span>
-              <small className="map-status-subtitle">Mumbai Metropolitan Area</small>
+              <span className="map-status-title"><span className="status-dot" /> Demonstration mode</span>
+              <small className="map-status-subtitle">{currentRegion?.name || 'Metropolitan Area'}</small>
             </div>
 
             {/* Top-Right: Intelligence Layers Control */}
@@ -296,11 +314,12 @@ function DashboardPage() {
           <div className="dashboard-alert-list">
             {priorityStreets.map((street, index) => {
               const riskLevel = (street.risk || 'MODERATE').toUpperCase()
-              const actionText = street.waterDepth >= 60
+              const regionalAction = currentRegion?.priorityActions?.[street.id]?.action
+              const actionText = regionalAction || (street.waterDepth >= 60
                 ? 'Restrict traffic · Deploy pumps'
                 : street.waterDepth >= 30
                 ? 'Prepare emergency response'
-                : 'Monitor traffic flow'
+                : 'Monitor traffic flow')
 
               return (
                 <article
@@ -350,7 +369,7 @@ function DashboardPage() {
             <p className="muted">Street-level flood progression over the next 3 hours.</p>
           </div>
           <div className="forecast-horizon-controls" role="tablist" aria-label="Forecast horizon selector">
-            {floodForecast.map((point) => (
+            {forecast.map((point) => (
               <button
                 type="button"
                 role="tab"
@@ -367,7 +386,7 @@ function DashboardPage() {
 
         {/* 6-Horizon Step Progression Grid */}
         <div className="forecast-timeline-grid">
-          {floodForecast.map((point, index) => {
+          {forecast.map((point, index) => {
             const isSelected = selectedTime === point.time
             const pointRisk = point.highestWaterDepth >= 30 ? 'CRITICAL' : point.highestWaterDepth >= 15 ? 'HIGH' : point.highestWaterDepth >= 5 ? 'MODERATE' : 'SAFE'
             const roadsCount = point.streets.filter((s) => s.waterDepth >= 15).length
@@ -439,7 +458,7 @@ function DashboardPage() {
             <div className="summary-stat-box">
               <span className="stat-box-label">Peak Water Depth</span>
               <strong className={`stat-box-value risk-${status.toLowerCase()}`}>{prediction.highestWaterDepth} cm</strong>
-              <small className="stat-box-sub">Max at {prediction.streets.reduce((max, s) => s.waterDepth > max.waterDepth ? s : max, prediction.streets[0])?.name || 'Kurla'}</small>
+              <small className="stat-box-sub">Max at {prediction.streets.reduce((max, s) => s.waterDepth > max.waterDepth ? s : max, prediction.streets[0])?.name || 'Monitored point'}</small>
             </div>
             <div className="summary-stat-box">
               <span className="stat-box-label">Drainage Load</span>
@@ -449,7 +468,7 @@ function DashboardPage() {
             <div className="summary-stat-box">
               <span className="stat-box-label">Affected Roads</span>
               <strong className="stat-box-value">{affectedRoads} sectors</strong>
-              <small className="stat-box-sub">2 safe corridors open</small>
+              <small className="stat-box-sub">Passable corridors active</small>
             </div>
           </div>
         </div>
@@ -574,7 +593,7 @@ function DashboardPage() {
           <div>
             <span className="eyebrow">MONITORING & DATA SOURCES</span>
             <h2>Data Sources</h2>
-            <p className="muted">Technical inputs and spatial datasets driving the current flood assessment.</p>
+            <p className="muted">Technical inputs and spatial datasets driving the current flood assessment for {currentRegion?.name || 'the selected region'}.</p>
           </div>
           <div className="system-operational">
             <span className="status-dot" /> SYSTEM OPERATIONAL · DEMO MODE
@@ -597,11 +616,12 @@ function DashboardPage() {
 
       <footer className="dashboard-footer">
         <strong>JalDrishti · Urban Flood Monitoring & Decision Support</strong>
-        <span>IMD Doppler Radar • Municipal Drainage Network • Digital Elevation Model • Hydrological Engine</span>
+        <span>Demonstration Scenario • Municipal Drainage Network • Digital Elevation Model • Coupled Hydrological Engine</span>
       </footer>
     </>
   )
 }
 
 export default DashboardPage
+
 

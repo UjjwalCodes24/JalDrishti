@@ -1,5 +1,7 @@
-import roadNetwork from '../data/roadNetwork.json'
-import { getFloodPrediction } from './floodEngine'
+import { getRegionConfig, DEFAULT_REGION_ID, resolveRegionId } from '../data/regions/index.js'
+import { getSafeRouteDataset } from '../data/routes/index.js'
+import { getFloodPrediction } from './floodEngine.js'
+
 
 const statusPenalty = { OPEN: 1, CAUTION: 1.35, FLOODED: 4.5, BLOCKED: Number.POSITIVE_INFINITY }
 const modeWeights = {
@@ -12,21 +14,34 @@ const modeWeights = {
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 
-export function getRoadLocations() {
-  return roadNetwork.nodes
+export function getRoadNetwork(regionId = DEFAULT_REGION_ID) {
+  return getSafeRouteDataset(regionId).roadNetwork
 }
 
-export function getRoadNetwork() {
-  return roadNetwork
+export function getRoadLocations(regionId = DEFAULT_REGION_ID) {
+  return getSafeRouteDataset(regionId).locations
 }
 
-export function resolveRoadLocationIds(origin, destination) {
-  const nodes = roadNetwork.nodes
+export function getCrisisCorridors(regionId = DEFAULT_REGION_ID) {
+  return getSafeRouteDataset(regionId).crisisCorridors
+}
+
+export function getRoutingGeocodeSuffix(regionId = DEFAULT_REGION_ID) {
+  const config = getRegionConfig(regionId)
+  return config.geocodeSuffix || config.shortName || config.name || 'India'
+}
+
+export function resolveRoadLocationIds(origin, destination, regionId = DEFAULT_REGION_ID) {
+  const network = getRoadNetwork(regionId)
+  const nodes = network.nodes || []
   const normalizedOrigin = (origin || '').trim().toLowerCase()
   const normalizedDestination = (destination || '').trim().toLowerCase()
 
-  const startId = nodes.find((node) => node.name.toLowerCase() === normalizedOrigin || node.id.toLowerCase() === normalizedOrigin)?.id || 'KURLA'
-  const destinationId = nodes.find((node) => node.name.toLowerCase() === normalizedDestination || node.id.toLowerCase() === normalizedDestination)?.id || 'SION'
+  const defaultStart = nodes[0]?.id || 'START'
+  const defaultDest = nodes[1]?.id || nodes[0]?.id || 'DEST'
+
+  const startId = nodes.find((node) => node.name.toLowerCase() === normalizedOrigin || node.id.toLowerCase() === normalizedOrigin)?.id || defaultStart
+  const destinationId = nodes.find((node) => node.name.toLowerCase() === normalizedDestination || node.id.toLowerCase() === normalizedDestination)?.id || defaultDest
 
   return { startId, destinationId }
 }
@@ -38,18 +53,21 @@ export function getSegmentStatus(waterDepth) {
   return 'OPEN'
 }
 
-export function getFloodAwareSegments(prediction) {
-  return roadNetwork.segments.map((segment) => {
-    const street = prediction.streets.find((item) => item.id === segment.floodStreetId)
-    const waterDepth = street ? Number((street.waterDepth * segment.floodFactor).toFixed(1)) : 0
-    const risk = street ? street.risk : 'LOW'
+export function getFloodAwareSegments(prediction, roadNet) {
+  const activeNetwork = roadNet || getRoadNetwork(prediction?.regionId || DEFAULT_REGION_ID)
+  const segments = activeNetwork.segments || activeNetwork.edges || []
+  return segments.map((segment) => {
+    // Check if segment has linked street or directly calculate from proximity/name
+    const street = prediction.streets?.find((item) => item.id === segment.floodStreetId || item.id === segment.id || item.name.toLowerCase().includes(segment.name?.toLowerCase()))
+    const waterDepth = street ? Number((street.waterDepth * (segment.floodFactor || 1)).toFixed(1)) : (segment.baseDepth || 0)
+    const risk = street ? street.risk : (waterDepth >= 30 ? 'CRITICAL' : waterDepth >= 15 ? 'HIGH' : 'LOW')
     return {
       id: segment.id,
       name: segment.name,
-      source: segment.source,
-      target: segment.target,
+      source: segment.source || segment.from,
+      target: segment.target || segment.to,
       distance: segment.distance,
-      travelTime: segment.travelTime,
+      travelTime: segment.travelTime || segment.baseTimeMin || 5,
       floodDepth: waterDepth,
       risk,
       status: getSegmentStatus(waterDepth),
@@ -84,12 +102,12 @@ function enumeratePaths(start, destination, segments) {
   return paths
 }
 
-function buildNavigationUrl(originName, destName, mode) {
+function buildNavigationUrl(originName, destName, mode, cityName = 'India') {
   const modeKey = modeWeights[mode]?.travelMode || 'driving'
   const params = new URLSearchParams({
     api: '1',
-    origin: originName ? `${originName}, Mumbai` : 'Mumbai',
-    destination: destName ? `${destName}, Mumbai` : 'Mumbai',
+    origin: originName ? `${originName}, ${cityName}` : cityName,
+    destination: destName ? `${destName}, ${cityName}` : cityName,
     travelmode: modeKey,
   })
   return `https://www.google.com/maps/dir/?${params.toString()}`
@@ -117,7 +135,7 @@ function buildRouteHighlights(type, blockedCount, floodedCount, roadsAvoided, ma
   ]
 }
 
-function summarizePath(path, mode, startNode, destNode, includeBlocked = false) {
+function summarizePath(path, mode, startNode, destNode, roadNet, includeBlocked = false, regionId = DEFAULT_REGION_ID) {
   const config = modeWeights[mode] || modeWeights.Commuter
   const distance = path.reduce((sum, segment) => sum + segment.distance, 0)
   const travelTime = path.reduce((sum, segment) => sum + segment.travelTime * (Number.isFinite(statusPenalty[segment.status]) ? statusPenalty[segment.status] : 3), 0)
@@ -136,7 +154,7 @@ function summarizePath(path, mode, startNode, destNode, includeBlocked = false) 
   const viable = blockedCount === 0 && maximumWaterDepth < 30
 
   // Coordinates array for mapping
-  const nodeLookup = Object.fromEntries(roadNetwork.nodes.map((node) => [node.id, node]))
+  const nodeLookup = Object.fromEntries((roadNet.nodes || []).map((node) => [node.id, node]))
   const coordinates = []
   path.forEach((segment) => {
     const s = nodeLookup[segment.from || segment.source]
@@ -180,7 +198,7 @@ function summarizePath(path, mode, startNode, destNode, includeBlocked = false) 
       from: segment.from || segment.source,
       to: segment.to || segment.target,
     })),
-    googleMapsUrl: buildNavigationUrl(startNode?.name, destNode?.name, mode),
+    googleMapsUrl: buildNavigationUrl(startNode?.name, destNode?.name, mode, getRoutingGeocodeSuffix(regionId)),
   }
 }
 
@@ -191,20 +209,27 @@ function routeReason(route) {
   return `Route ${reason} because ${blockingRoad.name} is predicted to reach ${blockingRoad.floodDepth} cm water depth.`
 }
 
-export function calculateSafeRoute(startId, destinationId, time = 'NOW', mode = 'Emergency Vehicle') {
-  const prediction = typeof time === 'string' ? getFloodPrediction(time) : time
-  const startNode = roadNetwork.nodes.find((node) => node.id === startId) || roadNetwork.nodes[0]
-  const destNode = roadNetwork.nodes.find((node) => node.id === destinationId) || roadNetwork.nodes[1]
-  const segments = getFloodAwareSegments(prediction)
+export function calculateSafeRoute(startId, destinationId, time = 'NOW', mode = 'Emergency Vehicle', regionId = DEFAULT_REGION_ID) {
+  const activeRegionId = resolveRegionId(regionId)
+  const prediction = typeof time === 'string' ? getFloodPrediction(time, activeRegionId) : time
+  const roadNet = getRoadNetwork(activeRegionId)
+  const nodes = roadNet.nodes || []
+
+  const regionConfig = getRegionConfig(activeRegionId)
+  const [centerLat, centerLng] = regionConfig.center || [20.5937, 78.9629]
+  const startNode = nodes.find((node) => node.id === startId) || nodes[0] || { id: 'START', name: 'Origin', latitude: centerLat, longitude: centerLng }
+  const destNode = nodes.find((node) => node.id === destinationId) || nodes[1] || nodes[0] || { id: 'DEST', name: 'Destination', latitude: centerLat, longitude: centerLng }
+
+  const segments = getFloodAwareSegments(prediction, roadNet)
   const allPaths = enumeratePaths(startNode.id, destNode.id, segments)
   const safePaths = allPaths.filter((path) => !path.some((segment) => segment.status === 'BLOCKED'))
 
   const summarizedSafe = safePaths
-    .map((path) => summarizePath(path, mode, startNode, destNode))
+    .map((path) => summarizePath(path, mode, startNode, destNode, roadNet, false, activeRegionId))
     .sort((a, b) => b.safetyScore - a.safetyScore || a.routeCost - b.routeCost)
 
   const normalRoute = allPaths
-    .map((path) => summarizePath(path, mode, startNode, destNode, true))
+    .map((path) => summarizePath(path, mode, startNode, destNode, roadNet, true, activeRegionId))
     .sort((a, b) => a.distance - b.distance)[0]
 
   const recommendedRaw = summarizedSafe[0] || null
@@ -255,9 +280,10 @@ export function calculateSafeRoute(startId, destinationId, time = 'NOW', mode = 
   const routes = [recommended, alternative, shortestNormal].filter(Boolean)
 
   return {
+    regionId: activeRegionId,
     start: startNode,
     destination: destNode,
-    time: prediction.time,
+    time: prediction?.time || 'NOW',
     mode,
     segments,
     routes,
@@ -269,7 +295,7 @@ export function calculateSafeRoute(startId, destinationId, time = 'NOW', mode = 
     blockedRoads: segments.filter((segment) => segment.status === 'BLOCKED'),
     googleMapsAvailable: false,
     sourceType: 'simulation',
-    notice: 'Google Maps routing unavailable — using JalDrishti simulation.',
-    floodHotspots: prediction.streets.filter((street) => street.waterDepth > 0),
+    notice: `JalDrishti demonstration route for ${regionConfig.shortName || regionConfig.name}. Simulated flood-aware corridors — not live Google routing.`,
+    floodHotspots: (prediction?.streets || []).filter((street) => street.waterDepth > 0),
   }
 }

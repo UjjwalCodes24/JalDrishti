@@ -1,15 +1,16 @@
-import drainageNetwork from '../data/drainageNetwork.json'
-import { calculateDrainageStatus } from './drainageService'
-import { calculateSurfaceRunoff } from './terrainService'
-import { calculateWaterDepth, getFloodPrediction } from './floodEngine'
+import { calculateDrainageStatus, getDrainageNetwork } from './drainageService.js'
+import { calculateSurfaceRunoff } from './terrainService.js'
+import { calculateWaterDepth, getFloodPrediction } from './floodEngine.js'
+
 
 const clamp = (value, min = 0, max = 1) => Math.min(max, Math.max(min, value))
 const percent = (value) => Math.round(value * 100)
 
 function getLocationDrainage(street, prediction) {
+  const baseNetwork = getDrainageNetwork(prediction.regionId || 'mumbai')
   const node = prediction.drainage.nodes.find((item) => item.id === street.drainageNode)
   const relatedEdges = prediction.drainage.edges.filter((edge) => edge.source === street.drainageNode || edge.target === street.drainageNode)
-  const blockedEdges = relatedEdges.filter((edge) => drainageNetwork.edges.find((base) => base.id === edge.id)?.blocked)
+  const blockedEdges = relatedEdges.filter((edge) => baseNetwork.edges.find((base) => base.id === edge.id)?.blocked)
   return { node, relatedEdges, blockedEdges }
 }
 
@@ -64,34 +65,35 @@ export function generateOperationalExplanation(street, prediction, factors) {
   return 'Maintain normal monitoring and review the next forecast horizon for changes.'
 }
 
-function simulateDepth(street, intensity, drainageAdjustment = {}) {
+function simulateDepth(street, intensity, drainageAdjustment = {}, regionId = 'mumbai') {
   const runoff = calculateSurfaceRunoff(intensity, street.terrain)
-  const drainage = calculateDrainageStatus(intensity, runoff)
+  const drainage = calculateDrainageStatus(intensity, runoff, regionId)
   const adjustedDrainage = { ...drainage, surchargeRisk: drainage.surchargeRisk * (drainageAdjustment.surcharge ?? 1), backflowProbability: drainage.backflowProbability * (drainageAdjustment.backflow ?? 1) }
   return calculateWaterDepth(runoff, street.terrain, adjustedDrainage)
 }
 
 export function simulateRainfallReduction(street, prediction) {
-  const depth = simulateDepth(street, prediction.intensity * .7)
+  const depth = simulateDepth(street, prediction.intensity * .7, {}, prediction.regionId)
   return { label: 'Rainfall intensity decreases by 30%', from: street.waterDepth, to: depth, detail: `${prediction.intensity} to ${Number((prediction.intensity * .7).toFixed(1))} mm/hr` }
 }
 
 export function simulateDrainageImprovement(street, prediction) {
-  const depth = simulateDepth(street, prediction.intensity, { surcharge: .75, backflow: .75 })
+  const depth = simulateDepth(street, prediction.intensity, { surcharge: .75, backflow: .75 }, prediction.regionId)
   return { label: 'Drainage capacity improves by 25%', from: street.waterDepth, to: depth, detail: 'Reduced surcharge and improved hydraulic headroom' }
 }
 
 export function simulateBlockageRemoval(street, prediction) {
   const drainage = getLocationDrainage(street, prediction)
-  const depth = simulateDepth(street, prediction.intensity, { surcharge: drainage.blockedEdges.length ? .7 : .9, backflow: drainage.blockedEdges.length ? .55 : .82 })
+  const depth = simulateDepth(street, prediction.intensity, { surcharge: drainage.blockedEdges.length ? .7 : .9, backflow: drainage.blockedEdges.length ? .55 : .82 }, prediction.regionId)
   const fromBackflow = percent(prediction.drainage.backflowProbability)
   const toBackflow = Math.round(fromBackflow * (drainage.blockedEdges.length ? .55 : .82))
   return { label: drainage.blockedEdges.length ? 'Blocked drainage edge is cleared' : 'Local drainage obstruction is reduced', from: street.waterDepth, to: depth, detail: `Backflow probability ${fromBackflow}% to ${toBackflow}%` }
 }
 
-export function getExplainabilityData(streetId = 'ST-KUR-01', time = 'NOW') {
-  const prediction = getFloodPrediction(time)
-  const street = prediction.streets.find((item) => item.id === streetId) || prediction.streets[0]
+export function getExplainabilityData(streetId, time = 'NOW', regionId = 'mumbai') {
+  const prediction = getFloodPrediction(time, regionId)
+  const street = (streetId ? prediction.streets.find((item) => item.id === streetId) : null) || prediction.streets[0]
   const factors = calculateFactorContributions(street, prediction)
   return { prediction, street, factors, explanation: generateFloodExplanation(street, prediction, factors), operationalExplanation: generateOperationalExplanation(street, prediction, factors), counterfactuals: [simulateRainfallReduction(street, prediction), simulateDrainageImprovement(street, prediction), simulateBlockageRemoval(street, prediction)] }
 }
+

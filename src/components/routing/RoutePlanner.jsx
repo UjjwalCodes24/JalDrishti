@@ -1,12 +1,5 @@
 import { Panel } from '../ui'
 
-const PRESET_CORRIDORS = [
-  { label: 'Kurla ➔ Sion Hospital', origin: 'Kurla Station', destination: 'Sion Hospital' },
-  { label: 'Andheri ➔ BKC', origin: 'Andheri East', destination: 'Bandra Kurla Complex' },
-  { label: 'Dharavi ➔ Airport', origin: 'Dharavi Junction', destination: 'Mumbai Airport' },
-  { label: 'BKC ➔ Bandra West', origin: 'Bandra Kurla Complex', destination: 'Bandra West' },
-]
-
 export default function RoutePlanner({
   locations = [],
   origin,
@@ -16,6 +9,10 @@ export default function RoutePlanner({
   onCalculate,
   loading,
   googleMapsAvailable,
+  corridors = [],
+  originPlaceholder = 'Start location',
+  destinationPlaceholder = 'Destination',
+  regionName = 'the selected region',
 }) {
   const handlePreset = (preset) => {
     onOriginChange(preset.origin)
@@ -47,7 +44,7 @@ export default function RoutePlanner({
       <div className="route-preset-bar">
         <span className="preset-label">CRISIS CORRIDORS:</span>
         <div className="preset-chips">
-          {PRESET_CORRIDORS.map((preset) => (
+          {corridors.map((preset) => (
             <button
               key={preset.label}
               type="button"
@@ -68,7 +65,7 @@ export default function RoutePlanner({
             list="jaldrishti-locations"
             value={origin}
             onChange={(event) => onOriginChange(event.target.value)}
-            placeholder="e.g. Kurla Station"
+            placeholder={originPlaceholder}
           />
         </label>
         <label>
@@ -77,7 +74,7 @@ export default function RoutePlanner({
             list="jaldrishti-locations"
             value={destination}
             onChange={(event) => onDestinationChange(event.target.value)}
-            placeholder="e.g. Sion Hospital"
+            placeholder={destinationPlaceholder}
           />
         </label>
       </div>
@@ -91,10 +88,12 @@ export default function RoutePlanner({
       <div className="route-planner-footer">
         <span className={`routing-engine-badge ${googleMapsAvailable ? 'google-active' : 'sim-active'}`}>
           <span className="status-dot" />
-          {googleMapsAvailable ? 'Google Maps Routing Active' : 'JalDrishti Simulation Active (Fallback)'}
+          {googleMapsAvailable ? 'Google Maps Routing Active' : 'JalDrishti Demonstration Route'}
         </span>
         <p className="route-planner-note">
-          Google Maps generates road network geometry and turn-by-turn navigation. JalDrishti evaluates predicted water depth, drainage surcharge, and road blockages to recommend the safest viable route.
+          {googleMapsAvailable
+            ? `Google Maps generates road network geometry and turn-by-turn navigation for ${regionName}. JalDrishti evaluates predicted water depth, drainage surcharge, and road blockages to recommend the safest viable route.`
+            : `JalDrishti demonstration route for ${regionName}. Prototype simulation of flood-aware corridors — not live Google routing or a current flood warning.`}
         </p>
       </div>
     </Panel>

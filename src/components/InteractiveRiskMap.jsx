@@ -3,7 +3,7 @@ import { Circle, CircleMarker, MapContainer, Marker, Polygon, Popup, Polyline, T
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const wardCoordinates = { W23: [19.0728, 72.8826], W14: [19.0466, 72.8631], W08: [19.1197, 72.8468], W31: [19.0178, 72.8294], W05: [18.9067, 72.8147] }
+const defaultWardCoordinates = { W23: [19.0728, 72.8826], W14: [19.0466, 72.8631], W08: [19.1197, 72.8468], W31: [19.0178, 72.8294], W05: [18.9067, 72.8147] }
 const riskColors = { CRITICAL: '#dc2626', Critical: '#dc2626', HIGH: '#ea580c', High: '#ea580c', MODERATE: '#d97706', Moderate: '#d97706', LOW: '#16a34a', Low: '#16a34a', SAFE: '#16a34a', Safe: '#16a34a' }
 const terrainColors = { 'low-lying': '#0284c7', moderate: '#d97706', higher: '#16a34a' }
 const depthColors = { low: '#0284c7', moderate: '#d97706', critical: '#dc2626' }
@@ -16,8 +16,6 @@ const twinFootprints = [
   [[19.0560, 72.8700], [19.0569, 72.8703], [19.0566, 72.8713], [19.0557, 72.8710]],
 ]
 
-
-
 function getOperationalAction(risk) {
   if (risk === 'CRITICAL') return 'Emergency response required'
   if (risk === 'HIGH') return 'Restrict traffic'
@@ -25,13 +23,18 @@ function getOperationalAction(risk) {
   return 'Normal monitoring'
 }
 
-function MapFocus({ wardId, focusedStreet, streets }) {
+function MapFocus({ wardId, focusedStreet, streets, center = [19.076, 72.8777], zoom = 11, wardCoords = defaultWardCoordinates }) {
   const map = useMap()
   useEffect(() => {
     const street = streets.find((item) => item.id === focusedStreet)
-    const target = street ? [street.latitude, street.longitude] : wardId && wardCoordinates[wardId] ? wardCoordinates[wardId] : [19.076, 72.8777]
-    map.flyTo(target, street || wardId ? 13 : 11, { duration: 0.8 })
-  }, [focusedStreet, map, streets, wardId])
+    const target = street
+      ? [street.latitude, street.longitude]
+      : wardId && wardCoords[wardId]
+      ? wardCoords[wardId]
+      : center
+    const targetZoom = street || wardId ? 13 : zoom
+    map.flyTo(target, targetZoom, { duration: 0.8 })
+  }, [focusedStreet, map, streets, wardId, center, zoom, wardCoords])
   return null
 }
 
@@ -70,7 +73,22 @@ function FloodPopup({ street, prediction, utilization }) {
   )
 }
 
-function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction, activeLayers = {}, terrainZones = [], drainageNetwork, focusedStreet, onSelectStreet, digitalTwin = false }) {
+function InteractiveRiskMap({
+  wards = [],
+  selectedWard,
+  onSelectWard,
+  prediction,
+  activeLayers = {},
+  terrainZones = [],
+  drainageNetwork,
+  focusedStreet,
+  onSelectStreet,
+  digitalTwin = false,
+  center = [19.076, 72.8777],
+  zoom = 11,
+  wardCoordinates: propWardCoordinates
+}) {
+  const wardCoords = propWardCoordinates || defaultWardCoordinates
   const visibleWards = selectedWard ? wards.filter((ward) => ward.id === selectedWard) : wards
   const show = (layer) => activeLayers[layer] !== false
   const streets = prediction?.streets || []
@@ -83,13 +101,13 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
 
   return (
     <div className="leaflet-map-wrap">
-      <MapContainer center={[19.076, 72.8777]} zoom={11} scrollWheelZoom className="leaflet-map">
+      <MapContainer center={center} zoom={zoom} scrollWheelZoom className="leaflet-map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapFocus wardId={selectedWard} focusedStreet={focusedStreet} streets={streets} />
-        {digitalTwin && (
+        <MapFocus wardId={selectedWard} focusedStreet={focusedStreet} streets={streets} center={center} zoom={zoom} wardCoords={wardCoords} />
+        {digitalTwin && center[0] > 18.8 && center[0] < 19.3 && (
           <>
             {twinFootprints.map((footprint, index) => (
               <Polygon
@@ -109,7 +127,8 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
           </>
         )}
         {show('risk') && visibleWards.map((ward) => {
-          const position = wardCoordinates[ward.id]
+          const position = wardCoords[ward.id]
+          if (!position) return null
           const color = riskColors[ward.status] || '#0d9488'
           return (
             <Fragment key={ward.id}>
@@ -118,6 +137,7 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
                 radius={selectedWard ? 1250 : 850}
                 pathOptions={{ color, fillColor: color, fillOpacity: 0.16, weight: 2 }}
               />
+
               <Marker
                 position={position}
                 icon={markerIcon(ward.risk, color, 'ward-marker', ward.status)}

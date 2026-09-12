@@ -1,7 +1,6 @@
 import { getFloodPrediction } from './floodEngine'
-import { calculateSafeRoute, resolveRoadLocationIds, getRoadLocations } from './routingService'
-import terrain from '../data/terrain.json'
-import drainageNetwork from '../data/drainageNetwork.json'
+import { calculateSafeRoute, resolveRoadLocationIds, getRoadLocations, getRoutingGeocodeSuffix } from './routingService'
+import { DEFAULT_REGION_ID, getRegionConfig, resolveRegionId } from '../data/regions/index.js'
 
 const travelModeMap = {
   'Emergency Vehicle': 'DRIVING',
@@ -33,13 +32,15 @@ export function getGoogleMapsApiKey() {
   return import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
 }
 
-export function buildGoogleMapsDirectionsUrl(origin, destination, travelMode = 'Emergency Vehicle') {
-  const originStr = typeof origin === 'string' ? origin : origin ? `${origin.latitude || origin.lat},${origin.longitude || origin.lng}` : 'Mumbai'
-  const destStr = typeof destination === 'string' ? destination : destination ? `${destination.latitude || destination.lat},${destination.longitude || destination.lng}` : 'Mumbai'
+export function buildGoogleMapsDirectionsUrl(origin, destination, travelMode = 'Emergency Vehicle', regionId = DEFAULT_REGION_ID) {
+  const suffix = getRoutingGeocodeSuffix(regionId)
+  const originStr = typeof origin === 'string' ? origin : origin ? `${origin.latitude || origin.lat},${origin.longitude || origin.lng}` : suffix
+  const destStr = typeof destination === 'string' ? destination : destination ? `${destination.latitude || destination.lat},${destination.longitude || destination.lng}` : suffix
   const navMode = googleNavModeMap[travelMode] || 'driving'
+  const cityToken = suffix.split(',')[0]
 
-  const originQuery = originStr.includes('Mumbai') ? originStr : `${originStr}, Mumbai, Maharashtra, India`
-  const destQuery = destStr.includes('Mumbai') ? destStr : `${destStr}, Mumbai, Maharashtra, India`
+  const originQuery = originStr.includes(cityToken) ? originStr : `${originStr}, ${suffix}`
+  const destQuery = destStr.includes(cityToken) ? destStr : `${destStr}, ${suffix}`
 
   const params = new URLSearchParams({
     api: '1',
@@ -108,9 +109,11 @@ export function loadGoogleMapsApi() {
   return googleMapsPromise
 }
 
-export function evaluatePolylineAgainstFloodData(polyline, prediction) {
+export function evaluatePolylineAgainstFloodData(polyline, prediction, regionId = DEFAULT_REGION_ID) {
   const floodStreets = (prediction.streets || []).filter((s) => s.waterDepth > 0)
-  const drainageNodes = (drainageNetwork.nodes || [])
+  const regionConfig = getRegionConfig(regionId)
+  const drainageNodes = regionConfig.drainageNetwork?.nodes || []
+  const terrainZones = regionConfig.terrain || []
   const surchargeRisk = prediction.drainage?.surchargeRisk || 0
 
   let maximumWaterDepth = 0
@@ -139,7 +142,7 @@ export function evaluatePolylineAgainstFloodData(polyline, prediction) {
     })
 
     // Check low-lying terrain depression zones
-    terrain.zones.forEach((zone) => {
+    terrainZones.forEach((zone) => {
       const zoneDist = Math.hypot(point.lat - zone.latitude, point.lng - zone.longitude)
       if (zoneDist < 0.007 && zone.accumulationPotential > 0.65) {
         const terrainEffect = (zone.accumulationPotential - 0.45) * (prediction.intensity || 10) * 0.18
@@ -232,8 +235,8 @@ function buildRouteHighlights(status, evaluation, viable) {
   ]
 }
 
-function normalizeGoogleRoute(route, index, origin, destination, time, mode) {
-  const prediction = getFloodPrediction(time)
+function normalizeGoogleRoute(route, index, origin, destination, time, mode, regionId = DEFAULT_REGION_ID) {
+  const prediction = getFloodPrediction(time, regionId)
   const polyline = (route.overview_path || []).map((point) => ({
     lat: typeof point.lat === 'function' ? point.lat() : point.lat,
     lng: typeof point.lng === 'function' ? point.lng() : point.lng,
@@ -244,7 +247,7 @@ function normalizeGoogleRoute(route, index, origin, destination, time, mode) {
   const distanceKm = Number((distanceMeters / 1000).toFixed(1))
   const durationMin = Math.max(1, Math.round(durationSeconds / 60))
 
-  const evaluation = evaluatePolylineAgainstFloodData(polyline, prediction)
+  const evaluation = evaluatePolylineAgainstFloodData(polyline, prediction, regionId)
   const safetyScore = calculateRouteSafetyScore(evaluation, distanceKm, durationMin)
   const viable = evaluation.blockedCount === 0 && evaluation.maximumWaterDepth < 30
 
@@ -290,7 +293,7 @@ function normalizeGoogleRoute(route, index, origin, destination, time, mode) {
     viable,
     reason,
     highlights,
-    googleMapsUrl: buildGoogleMapsDirectionsUrl(origin, destination, mode),
+    googleMapsUrl: buildGoogleMapsDirectionsUrl(origin, destination, mode, regionId),
     segments: (route.legs || []).flatMap((leg) =>
       (leg.steps || []).slice(0, 5).map((step, sIdx) => ({
         id: `g-step-${index}-${sIdx}`,
@@ -305,18 +308,19 @@ function normalizeGoogleRoute(route, index, origin, destination, time, mode) {
   }
 }
 
-export async function getGoogleRoutes(origin, destination, travelMode = 'Emergency Vehicle') {
+export async function getGoogleRoutes(origin, destination, travelMode = 'Emergency Vehicle', regionId = DEFAULT_REGION_ID) {
   const maps = await loadGoogleMapsApi()
   const directionsService = new maps.DirectionsService()
   const modeKey = travelModeMap[travelMode] || 'DRIVING'
+  const suffix = getRoutingGeocodeSuffix(regionId)
+  const cityToken = suffix.split(',')[0]
 
-  // Resolve origin and destination coordinates if available in roadNetwork
-  const locations = getRoadLocations()
+  const locations = getRoadLocations(regionId)
   const originNode = locations.find((l) => l.name.toLowerCase() === (origin || '').trim().toLowerCase() || l.id.toLowerCase() === (origin || '').trim().toLowerCase())
   const destNode = locations.find((l) => l.name.toLowerCase() === (destination || '').trim().toLowerCase() || l.id.toLowerCase() === (destination || '').trim().toLowerCase())
 
-  const originParam = originNode ? { lat: originNode.latitude, lng: originNode.longitude } : (origin.includes('Mumbai') ? origin : `${origin}, Mumbai, India`)
-  const destParam = destNode ? { lat: destNode.latitude, lng: destNode.longitude } : (destination.includes('Mumbai') ? destination : `${destination}, Mumbai, India`)
+  const originParam = originNode ? { lat: originNode.latitude, lng: originNode.longitude } : ((origin || '').includes(cityToken) ? origin : `${origin}, ${suffix}`)
+  const destParam = destNode ? { lat: destNode.latitude, lng: destNode.longitude } : ((destination || '').includes(cityToken) ? destination : `${destination}, ${suffix}`)
 
   return new Promise((resolve, reject) => {
     directionsService.route(
@@ -359,18 +363,24 @@ export async function getGoogleRoutes(origin, destination, travelMode = 'Emergen
 }
 
 export async function calculateGoogleAwareSafeRoute({
-  origin = 'Kurla Station',
-  destination = 'Sion Hospital',
+  origin,
+  destination,
   time = 'NOW',
   mode = 'Emergency Vehicle',
   fallbackStartId,
   fallbackDestinationId,
+  regionId = DEFAULT_REGION_ID,
 }) {
-  const { startId, destinationId } = resolveRoadLocationIds(origin, destination)
+  const activeRegionId = resolveRegionId(regionId)
+  const regionConfig = getRegionConfig(activeRegionId)
+  const resolvedOrigin = origin || regionConfig.defaultOrigin
+  const resolvedDestination = destination || regionConfig.defaultDestination
+  const { startId, destinationId } = resolveRoadLocationIds(resolvedOrigin, resolvedDestination, activeRegionId)
   const resolvedStartId = fallbackStartId || startId
   const resolvedDestId = fallbackDestinationId || destinationId
 
-  const fallbackResult = calculateSafeRoute(resolvedStartId, resolvedDestId, time, mode)
+  const fallbackResult = calculateSafeRoute(resolvedStartId, resolvedDestId, time, mode, activeRegionId)
+  const demonstrationNotice = `JalDrishti demonstration route for ${regionConfig.shortName || regionConfig.name}. Simulated flood-aware corridors — not live Google routing.`
 
   const apiKey = getGoogleMapsApiKey()
   if (!apiKey || apiKey.trim() === '' || apiKey.includes('YOUR_GOOGLE_MAPS_API_KEY')) {
@@ -378,25 +388,25 @@ export async function calculateGoogleAwareSafeRoute({
       ...fallbackResult,
       googleMapsAvailable: false,
       sourceType: 'simulation',
-      notice: 'Google Maps routing unavailable — using JalDrishti simulation.',
+      notice: demonstrationNotice,
     }
   }
 
   try {
-    const rawRoutes = await getGoogleRoutes(origin, destination, mode)
+    const rawRoutes = await getGoogleRoutes(resolvedOrigin, resolvedDestination, mode, activeRegionId)
     if (!rawRoutes || rawRoutes.length === 0) {
       return {
         ...fallbackResult,
         googleMapsAvailable: false,
         sourceType: 'simulation',
-        notice: 'Google Maps returned no routes — using JalDrishti simulation.',
+        notice: demonstrationNotice,
       }
     }
 
     // Normalize and evaluate each Google route against JalDrishti flood prediction
     const evaluatedRoutes = rawRoutes
       .slice(0, 3)
-      .map((route, index) => normalizeGoogleRoute(route, index, origin, destination, time, mode))
+      .map((route, index) => normalizeGoogleRoute(route, index, resolvedOrigin, resolvedDestination, time, mode, activeRegionId))
 
     // 1. Identify shortest route (by distance)
     const sortedByDistance = [...evaluatedRoutes].sort((a, b) => a.distance - b.distance)
@@ -439,11 +449,13 @@ export async function calculateGoogleAwareSafeRoute({
         : `Direct shortest corridor with ${shortestNormal.travelTime} min ETA.`
     }
 
-    const locations = getRoadLocations()
-    const startNode = locations.find((l) => l.id === resolvedStartId) || { id: resolvedStartId, name: origin, latitude: 19.0728, longitude: 72.8826 }
-    const destNode = locations.find((l) => l.id === resolvedDestId) || { id: resolvedDestId, name: destination, latitude: 19.0466, longitude: 72.8631 }
+    const locations = getRoadLocations(activeRegionId)
+    const [centerLat, centerLng] = regionConfig.center || [20.5937, 78.9629]
+    const startNode = locations.find((l) => l.id === resolvedStartId) || { id: resolvedStartId, name: resolvedOrigin, latitude: centerLat, longitude: centerLng }
+    const destNode = locations.find((l) => l.id === resolvedDestId) || { id: resolvedDestId, name: resolvedDestination, latitude: centerLat, longitude: centerLng }
 
     return {
+      regionId: activeRegionId,
       start: startNode,
       destination: destNode,
       time,
@@ -457,15 +469,15 @@ export async function calculateGoogleAwareSafeRoute({
       noSafeRouteAvailable: viableRoutes.length === 0,
       googleMapsAvailable: true,
       sourceType: 'google',
-      notice: 'Google Maps real-world routing active. JalDrishti flood scoring applied to all route alternatives.',
-      floodHotspots: getFloodPrediction(time).streets.filter((street) => street.waterDepth > 0),
+      notice: `Google Maps real-world routing active for ${regionConfig.shortName || regionConfig.name}. JalDrishti flood scoring applied to all route alternatives.`,
+      floodHotspots: (getFloodPrediction(time, activeRegionId).streets || []).filter((street) => street.waterDepth > 0),
     }
   } catch (error) {
     return {
       ...fallbackResult,
       googleMapsAvailable: false,
       sourceType: 'simulation',
-      notice: 'Live Google routing is currently unavailable. JalDrishti simulation is being used.',
+      notice: demonstrationNotice,
       googleError: error?.message || 'Google Maps API error',
     }
   }

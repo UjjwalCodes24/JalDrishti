@@ -223,9 +223,41 @@ body { background: var(--command-canvas); color: var(--command-navy); }
 .topbar { height: 72px; background: rgba(255, 255, 255, 0.9); border-bottom-color: var(--command-line); box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03); backdrop-filter: blur(8px); }
 .topbar-kicker, .eyebrow { color: var(--command-teal); }
 .topbar-location { color: var(--command-navy); letter-spacing: -0.2px; }
+.topbar-region-selector-wrapper { display: flex; flex-direction: column; gap: 2px; }
+.topbar-select-container { position: relative; display: inline-flex; align-items: center; }
+.topbar-region-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 6px center;
+  background-size: 11px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 2px 24px 2px 4px;
+  margin-left: -4px;
+  font: 600 16px 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--command-navy, #0f172a);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+.topbar-region-select:hover {
+  border-color: var(--command-line, #cbd5e1);
+  background-color: rgba(241, 245, 249, 0.7);
+}
+.topbar-region-select:focus-visible {
+  border-color: var(--command-teal, #0d9488);
+  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.15);
+}
+.topbar-region-select option {
+  background-color: #ffffff;
+  color: #0f172a;
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  font-size: 14px;
+}
 .topbar-meta { color: var(--command-slate); }
 .live-indicator { color: var(--command-teal); }
 .status-dot { background: #16a34a; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+
 .page-content { width: min(1280px, 92%); padding-top: 32px; }
 .page-header { margin-bottom: 22px; }
 .page-header h1 { color: var(--command-navy); letter-spacing: -0.5px; font-size: clamp(24px, 2.5vw, 32px); }

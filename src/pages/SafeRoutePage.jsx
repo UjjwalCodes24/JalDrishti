@@ -1,35 +1,60 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { PageHeader, Panel } from '../components/ui'
+import { useRegion } from '../context/useRegion'
 import RoutePlanner from '../components/routing/RoutePlanner'
 import RouteTimeline from '../components/routing/RouteTimeline'
 import RouteTypeSelector from '../components/routing/RouteTypeSelector'
 import RouteCard from '../components/routing/RouteCard'
 import RouteMap from '../components/routing/RouteMap'
 import RouteDetails from '../components/routing/RouteDetails'
-import { floodForecast } from '../services/floodEngine'
+import { getFloodForecast } from '../services/floodEngine'
 import { calculateGoogleAwareSafeRoute } from '../services/googleMapsRoutingService'
-import { calculateSafeRoute, getRoadLocations, resolveRoadLocationIds } from '../services/routingService'
+import { getSafeRouteDataset } from '../data/routes/index.js'
+import { calculateSafeRoute, resolveRoadLocationIds } from '../services/routingService'
 
 const LOADING_STEPS = [
-  'Requesting route alternatives from Google Routes API…',
+  'Evaluating route alternatives against regional flood model…',
   'Evaluating predicted water depth & terrain runoff…',
   'Checking drainage network surcharge & backflow…',
   'Ranking safest viable flood navigation corridors…',
 ]
 
 function SafeRoutePage() {
-  const locations = getRoadLocations()
-  const [origin, setOrigin] = useState('Kurla Station')
-  const [destination, setDestination] = useState('Sion Hospital')
+  const { selectedRegion, currentRegion } = useRegion()
+  const regionId = currentRegion?.id || selectedRegion
+  const routeDataset = useMemo(() => getSafeRouteDataset(regionId), [regionId])
+  const locations = routeDataset.locations
+  const corridors = routeDataset.crisisCorridors
+
+  const [customOrigin, setCustomOrigin] = useState('')
+  const [customDestination, setCustomDestination] = useState('')
   const [selectedTime, setSelectedTime] = useState('NOW')
   const [routeType, setRouteType] = useState('Emergency Vehicle')
   const [loading, setLoading] = useState(false)
   const [loadingStepIdx, setLoadingStepIdx] = useState(0)
-  const [routingResult, setRoutingResult] = useState(() =>
-    calculateSafeRoute('KURLA', 'SION', 'NOW', 'Emergency Vehicle'),
-  )
+
+  useEffect(() => {
+    setCustomOrigin('')
+    setCustomDestination('')
+    const defaults = getSafeRouteDataset(regionId)
+    const { startId, destinationId } = resolveRoadLocationIds(defaults.defaultOrigin, defaults.defaultDestination, regionId)
+    setRoutingResult(calculateSafeRoute(startId, destinationId, selectedTime, routeType, regionId))
+    // Intentionally depend only on regionId so a city switch clears O/D without resetting when the user changes time or mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionId])
+
+  const regionLocationNames = new Set(locations.map((location) => location.name))
+  const origin = regionLocationNames.has(customOrigin) ? customOrigin : (routeDataset.defaultOrigin || locations[0]?.name || 'Origin')
+  const destination = regionLocationNames.has(customDestination) ? customDestination : (routeDataset.defaultDestination || locations[1]?.name || 'Destination')
+
+  const [routingResult, setRoutingResult] = useState(() => {
+    const { startId, destinationId } = resolveRoadLocationIds(routeDataset.defaultOrigin, routeDataset.defaultDestination, regionId)
+    return calculateSafeRoute(startId, destinationId, 'NOW', 'Emergency Vehicle', regionId)
+  })
 
   const loadingIntervalRef = useRef(null)
+  const forecast = useMemo(() => getFloodForecast(regionId), [regionId])
+
 
   const handleCalculate = async (
     customOrigin = origin,
@@ -37,11 +62,10 @@ function SafeRoutePage() {
     nextTime = selectedTime,
     nextMode = routeType,
   ) => {
-    const { startId, destinationId } = resolveRoadLocationIds(customOrigin, customDestination)
+    const { startId, destinationId } = resolveRoadLocationIds(customOrigin, customDestination, regionId)
     setLoading(true)
     setLoadingStepIdx(0)
 
-    // Cycle through loading steps for professional command-center feedback
     loadingIntervalRef.current = window.setInterval(() => {
       setLoadingStepIdx((prev) => (prev + 1) % LOADING_STEPS.length)
     }, 280)
@@ -54,15 +78,17 @@ function SafeRoutePage() {
         mode: nextMode,
         fallbackStartId: startId,
         fallbackDestinationId: destinationId,
+        regionId,
       })
 
-      setRoutingResult(result)
+      if (!result.regionId || result.regionId === regionId) {
+        setRoutingResult(result)
+      }
     } catch {
-      // Automatic fallback on any unexpected error
-      const fallback = calculateSafeRoute(startId, destinationId, nextTime, nextMode)
+      const fallback = calculateSafeRoute(startId, destinationId, nextTime, nextMode, regionId)
       setRoutingResult({
         ...fallback,
-        notice: 'Live Google routing unavailable — JalDrishti simulation active.',
+        notice: `JalDrishti demonstration route for ${routeDataset.regionName || 'the selected region'}`,
       })
     } finally {
       if (loadingIntervalRef.current) {
@@ -74,7 +100,7 @@ function SafeRoutePage() {
 
   useEffect(() => {
     let active = true
-    const { startId, destinationId } = resolveRoadLocationIds(origin, destination)
+    const { startId, destinationId } = resolveRoadLocationIds(origin, destination, regionId)
 
     calculateGoogleAwareSafeRoute({
       origin,
@@ -83,16 +109,22 @@ function SafeRoutePage() {
       mode: routeType,
       fallbackStartId: startId,
       fallbackDestinationId: destinationId,
+      regionId,
     })
       .then((res) => {
-        if (active) setRoutingResult(res)
+        if (active && (!res.regionId || res.regionId === regionId)) setRoutingResult(res)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (active) {
+          const fallback = calculateSafeRoute(startId, destinationId, selectedTime, routeType, regionId)
+          setRoutingResult(fallback)
+        }
+      })
 
     return () => {
       active = false
     }
-  }, [origin, destination, selectedTime, routeType])
+  }, [origin, destination, selectedTime, routeType, regionId])
 
   const updateRouteTime = async (time) => {
     setSelectedTime(time)
@@ -111,24 +143,30 @@ function SafeRoutePage() {
       <PageHeader
         eyebrow="Navigation Resilience & Emergency Access"
         title="Flood-Safe Routes"
-        description="Real-world Google Maps corridors evaluated against JalDrishti predicted flood depth, terrain runoff, and drainage overload to recommend the safest viable route."
+        description={`Road corridors evaluated against JalDrishti predicted flood depth, terrain runoff, and drainage overload for ${routeDataset.regionName || 'the selected region'}. Prototype demonstration corridors — not live flood warnings.`}
         action={
           <span className={`prototype-label ${routingResult.googleMapsAvailable ? 'google-active' : ''}`}>
-            {routingResult.googleMapsAvailable ? 'GOOGLE MAPS ROUTING ACTIVE' : 'JalDrishti Simulation Active (Fallback)'}
+            {routingResult.googleMapsAvailable ? 'GOOGLE MAPS ROUTING ACTIVE' : 'JalDrishti Demonstration Route'}
           </span>
         }
       />
 
       <RoutePlanner
+        key={regionId}
         locations={locations}
         origin={origin}
         destination={destination}
-        onOriginChange={setOrigin}
-        onDestinationChange={setDestination}
+        onOriginChange={setCustomOrigin}
+        onDestinationChange={setCustomDestination}
         onCalculate={(o, d) => handleCalculate(o || origin, d || destination)}
         loading={loading}
         googleMapsAvailable={routingResult.googleMapsAvailable}
+        corridors={corridors}
+        originPlaceholder={routeDataset.defaultOrigin || 'Start location'}
+        destinationPlaceholder={routeDataset.defaultDestination || 'Destination'}
+        regionName={routeDataset.regionName || 'the selected region'}
       />
+
 
       <Panel className="route-controls-panel">
         <div className="route-control-row">
@@ -137,7 +175,7 @@ function SafeRoutePage() {
             <h2>Travel conditions at forecast horizon: {selectedTime}</h2>
             <p className="muted">Safety scores dynamically update based on predicted precipitation & water accumulation.</p>
           </div>
-          <RouteTimeline forecast={floodForecast} selectedTime={selectedTime} onSelectTime={updateRouteTime} />
+          <RouteTimeline forecast={forecast} selectedTime={selectedTime} onSelectTime={updateRouteTime} />
         </div>
         <RouteTypeSelector selectedType={routeType} onSelectType={updateRouteType} />
       </Panel>
@@ -163,7 +201,7 @@ function SafeRoutePage() {
               {passableCount > 0 ? `${passableCount} Passable Corridor(s)` : 'No Safe Route Available'}
             </span>
           </div>
-          <RouteMap routingResult={routingResult} />
+          <RouteMap routingResult={routingResult} regionCenter={routeDataset.center} mapKey={regionId} />
         </Panel>
 
         <div className="route-results">
@@ -179,3 +217,4 @@ function SafeRoutePage() {
 }
 
 export default SafeRoutePage
+

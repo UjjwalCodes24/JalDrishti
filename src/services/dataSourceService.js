@@ -1,9 +1,14 @@
-import rainfall from '../data/rainfall.json'
+import defaultRainfall from '../data/rainfall.json' with { type: 'json' }
+import { getRegionConfig } from './regionService.js'
 
-const imdEndpoint = import.meta.env.VITE_IMD_RAINFALL_ENDPOINT
 
-export function getRainfallDataSource() {
-  const profile = rainfall.sourceProfile
+const imdEndpoint = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_IMD_RAINFALL_ENDPOINT : undefined
+
+
+export function getRainfallDataSource(regionId = 'mumbai') {
+  const region = getRegionConfig(regionId)
+  const rainfall = region?.rainfall || defaultRainfall
+  const profile = rainfall.sourceProfile || defaultRainfall.sourceProfile
   const connected = Boolean(imdEndpoint)
   return {
     provider: profile.provider,
@@ -19,10 +24,13 @@ export function getRainfallDataSource() {
   }
 }
 
-export function getRainfallInput() {
-  return { ...rainfall, dataSource: getRainfallDataSource() }
+export function getRainfallInput(regionId = 'mumbai') {
+  const region = getRegionConfig(regionId)
+  const rainfall = region?.rainfall || defaultRainfall
+  return { ...rainfall, dataSource: getRainfallDataSource(regionId) }
 }
 
 export function formatObservationTime(value) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(value))
 }
+

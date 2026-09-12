@@ -1,10 +1,11 @@
-import { floodForecast, getFloodPrediction } from './floodEngine'
+import { getFloodForecast, getFloodPrediction } from './floodEngine'
 
-export function getNowcastImpact(time = 'NOW') {
-  const prediction = getFloodPrediction(time)
+export function getNowcastImpact(time = 'NOW', regionId = 'mumbai') {
+  const prediction = getFloodPrediction(time, regionId)
+  const forecast = getFloodForecast(regionId)
   const highRiskRoads = prediction.streets.filter((street) => street.risk === 'HIGH' || street.risk === 'CRITICAL').length
   const criticalRoads = prediction.streets.filter((street) => street.risk === 'CRITICAL').length
-  const expectedPeak = floodForecast.reduce((peak, point) => point.highestWaterDepth > peak.highestWaterDepth ? point : peak, floodForecast[0])
+  const expectedPeak = forecast.reduce((peak, point) => point.highestWaterDepth > peak.highestWaterDepth ? point : peak, forecast[0])
   return {
     ...prediction,
     highRiskRoads,
@@ -14,6 +15,8 @@ export function getNowcastImpact(time = 'NOW') {
   }
 }
 
-export function getForecastImpact() {
-  return floodForecast.map((point) => getNowcastImpact(point.time))
+export function getForecastImpact(regionId = 'mumbai') {
+  const forecast = getFloodForecast(regionId)
+  return forecast.map((point) => getNowcastImpact(point.time, regionId))
 }
+

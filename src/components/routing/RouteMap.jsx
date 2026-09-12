@@ -1,46 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import roadNetwork from '../../data/roadNetwork.json'
 import { loadGoogleMapsApi } from '../../services/googleMapsRoutingService'
 
 const routeColors = {
-  recommended: '#10b981', // Emerald Safe Green
-  alternative: '#f59e0b', // Amber Alternative
-  shortest: '#ef4444',    // Red Risk / Shortest
+  recommended: '#10b981',
+  alternative: '#f59e0b',
+  shortest: '#ef4444',
 }
 
-function getNodeLookup() {
-  return Object.fromEntries(roadNetwork.nodes.map((node) => [node.id, node]))
+const DEFAULT_CENTER = [20.5937, 78.9629]
+
+function toLatLng(point) {
+  if (!point) return null
+  if (Array.isArray(point) && point.length >= 2) {
+    return { lat: point[0], lng: point[1] }
+  }
+  const lat = point.lat ?? point.latitude
+  const lng = point.lng ?? point.longitude
+  if (lat == null || lng == null) return null
+  return { lat, lng }
 }
 
-function buildFallbackRoutePath(route) {
+function buildRoutePath(route) {
   if (!route) return []
   if (route.routePolyline?.length) {
-    return route.routePolyline.map((p) => [p.lat, p.lng])
+    return route.routePolyline.map((p) => toLatLng(p)).filter(Boolean)
   }
-  if (!route.segments) return []
-
-  const nodeLookup = getNodeLookup()
-  const path = []
-
-  route.segments.forEach((segment) => {
-    const source = nodeLookup[segment.from || segment.source]
-    const target = nodeLookup[segment.to || segment.target]
-
-    if (source && target) {
-      path.push([source.latitude, source.longitude], [target.latitude, target.longitude])
-    }
-  })
-
-  return path
+  if (route.polyline?.length) {
+    return route.polyline.map((p) => toLatLng(p)).filter(Boolean)
+  }
+  if (route.coordinates?.length) {
+    return route.coordinates.map((p) => toLatLng(p)).filter(Boolean)
+  }
+  return []
 }
 
-function RouteMap({ routingResult }) {
+function RouteMap({ routingResult, regionCenter, mapKey }) {
   const [mapMode, setMapMode] = useState('loading')
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const overlaysRef = useRef([])
+  const [centerLat, centerLng] = regionCenter?.length >= 2 ? regionCenter : DEFAULT_CENTER
+
+  useEffect(() => {
+    mapInstanceRef.current = null
+  }, [mapKey])
 
   useEffect(() => {
     let cancelled = false
@@ -62,7 +67,7 @@ function RouteMap({ routingResult }) {
 
         if (!mapInstanceRef.current) {
           mapInstanceRef.current = new maps.Map(mapRef.current, {
-            center: { lat: 19.073, lng: 72.872 },
+            center: { lat: centerLat, lng: centerLng },
             zoom: 12,
             mapTypeControl: false,
             streetViewControl: false,
@@ -83,9 +88,9 @@ function RouteMap({ routingResult }) {
         }
 
         const map = mapInstanceRef.current
+        map.setCenter({ lat: centerLat, lng: centerLng })
         const bounds = new maps.LatLngBounds()
 
-        // Clear existing overlays
         overlaysRef.current.forEach((overlay) => overlay.setMap(null))
         overlaysRef.current = []
 
@@ -101,13 +106,9 @@ function RouteMap({ routingResult }) {
         ].filter(([, route]) => route)
 
         routeEntries.forEach(([type, route]) => {
-          const rawPath = route.routePolyline?.length ? route.routePolyline : buildFallbackRoutePath(route)
+          const coordinates = buildRoutePath(route)
 
-          if (rawPath.length) {
-            const coordinates = Array.isArray(rawPath[0])
-              ? rawPath.map((p) => ({ lat: p[0], lng: p[1] }))
-              : rawPath
-
+          if (coordinates.length) {
             const polyline = new maps.Polyline({
               path: coordinates,
               geodesic: true,
@@ -122,13 +123,12 @@ function RouteMap({ routingResult }) {
           }
         })
 
-        // Origin & Destination Markers
         if (routingResult.start && routingResult.destination) {
+          const startPos = toLatLng(routingResult.start) || { lat: centerLat, lng: centerLng }
+          const destPos = toLatLng(routingResult.destination) || { lat: centerLat, lng: centerLng }
+
           const startMarker = new maps.Marker({
-            position: {
-              lat: routingResult.start.latitude || routingResult.start.lat || 19.0728,
-              lng: routingResult.start.longitude || routingResult.start.lng || 72.8826,
-            },
+            position: startPos,
             map,
             title: `Origin: ${routingResult.start.name || 'Start'}`,
             icon: {
@@ -142,10 +142,7 @@ function RouteMap({ routingResult }) {
           })
 
           const destinationMarker = new maps.Marker({
-            position: {
-              lat: routingResult.destination.latitude || routingResult.destination.lat || 19.0466,
-              lng: routingResult.destination.longitude || routingResult.destination.lng || 72.8631,
-            },
+            position: destPos,
             map,
             title: `Destination: ${routingResult.destination.name || 'Destination'}`,
             icon: {
@@ -159,16 +156,17 @@ function RouteMap({ routingResult }) {
           })
 
           overlaysRef.current.push(startMarker, destinationMarker)
-          bounds.extend(startMarker.getPosition())
-          bounds.extend(destinationMarker.getPosition())
+          bounds.extend(startPos)
+          bounds.extend(destPos)
         }
 
-        // Flood Hotspots
         if (routingResult.floodHotspots?.length) {
           routingResult.floodHotspots.forEach((street) => {
+            const center = toLatLng(street)
+            if (!center) return
             const circle = new maps.Circle({
-              center: { lat: street.latitude, lng: street.longitude },
-              radius: Math.max(140, Math.min(300, street.waterDepth * 8)),
+              center,
+              radius: Math.max(140, Math.min(300, (street.waterDepth || 10) * 8)),
               strokeColor: street.waterDepth >= 30 ? '#ef4444' : '#f59e0b',
               strokeOpacity: 0.7,
               strokeWeight: 1.5,
@@ -177,7 +175,7 @@ function RouteMap({ routingResult }) {
             })
 
             addOverlay(circle)
-            bounds.extend({ lat: street.latitude, lng: street.longitude })
+            bounds.extend(center)
           })
         }
 
@@ -198,10 +196,10 @@ function RouteMap({ routingResult }) {
       overlaysRef.current.forEach((overlay) => overlay.setMap(null))
       overlaysRef.current = []
     }
-  }, [routingResult])
+  }, [routingResult, centerLat, centerLng, mapKey])
 
   if (mapMode === 'fallback') {
-    return <FallbackRouteMap routingResult={routingResult} />
+    return <FallbackRouteMap routingResult={routingResult} regionCenter={[centerLat, centerLng]} mapKey={mapKey} />
   }
 
   if (mapMode === 'loading') {
@@ -228,102 +226,105 @@ function RouteMap({ routingResult }) {
   )
 }
 
-function MapViewport({ start, destination }) {
+function MapViewport({ start, destination, regionCenter }) {
   const map = useMap()
   const points = [start, destination]
+    .map((point) => toLatLng(point))
     .filter(Boolean)
-    .map((point) => [point.latitude || point.lat, point.longitude || point.lng])
+    .map((point) => [point.lat, point.lng])
 
   if (points.length === 2) {
     map.fitBounds(points, { padding: [40, 40] })
+  } else if (regionCenter?.length >= 2) {
+    map.setView(regionCenter, 12)
   }
 
   return null
 }
 
-function FallbackRouteMap({ routingResult }) {
-  const nodeLookup = Object.fromEntries(roadNetwork.nodes.map((node) => [node.id, node]))
+function FallbackRouteMap({ routingResult, regionCenter, mapKey }) {
   const routeLines = [
     ['shortest', routingResult.shortestNormal],
     ['alternative', routingResult.alternative],
     ['recommended', routingResult.recommended],
   ].filter(([, route]) => route)
 
-  const fallbackPolylines = routeLines.flatMap(([type, route]) => {
-    if (route.routePolyline?.length) {
-      const positions = route.routePolyline.map((p) => [p.lat, p.lng])
-      return (
-        <Polyline
-          key={`poly-${type}-${route.id}`}
-          positions={positions}
-          pathOptions={{
-            color: routeColors[type] || '#2563eb',
-            weight: type === 'recommended' ? 6 : type === 'alternative' ? 5 : 4,
-            opacity: type === 'recommended' ? 0.95 : type === 'alternative' ? 0.85 : 0.72,
-            dashArray: type === 'shortest' ? '8 6' : undefined,
-          }}
-        >
-          <Popup>
-            <strong>{route.name}</strong><br />
-            Safety Score: {route.safetyScore}/100 · {route.distance} km · {route.travelTime} min<br />
-            Max Flood Depth: {route.maximumWaterDepth} cm
-          </Popup>
-        </Polyline>
-      )
-    }
+  const fallbackPolylines = routeLines.map(([type, route]) => {
+    const coordinates = buildRoutePath(route).map((p) => [p.lat, p.lng])
+    if (!coordinates.length) return null
 
-    return (route.segments || []).map((segment, index) => {
-      const source = nodeLookup[segment.from || segment.source]
-      const target = nodeLookup[segment.to || segment.target]
-
-      if (!source || !target) return null
-
-      return (
-        <Polyline
-          key={`${type}-${segment.id || index}-${index}`}
-          positions={[[source.latitude, source.longitude], [target.latitude, target.longitude]]}
-          pathOptions={{
-            color: routeColors[type] || '#2563eb',
-            weight: type === 'recommended' ? 6 : type === 'alternative' ? 5 : 4,
-            opacity: type === 'recommended' ? 0.95 : type === 'alternative' ? 0.85 : 0.72,
-            dashArray: type === 'shortest' ? '8 6' : undefined,
-          }}
-        >
-          <Popup>
-            <strong>{segment.name}</strong><br />
-            {segment.floodDepth} cm predicted depth · {segment.status}
-          </Popup>
-        </Polyline>
-      )
-    })
+    return (
+      <Polyline
+        key={`poly-${type}-${route.id}`}
+        positions={coordinates}
+        pathOptions={{
+          color: routeColors[type] || '#2563eb',
+          weight: type === 'recommended' ? 6 : type === 'alternative' ? 5 : 4,
+          opacity: type === 'recommended' ? 0.95 : type === 'alternative' ? 0.85 : 0.72,
+          dashArray: type === 'shortest' ? '8 6' : undefined,
+        }}
+      >
+        <Popup>
+          <strong>{route.name}</strong><br />
+          Safety Score: {route.safetyScore}/100 · {route.distance} km · {route.travelTime} min<br />
+          Max Flood Depth: {route.maximumWaterDepth} cm
+        </Popup>
+      </Polyline>
+    )
   })
+
+  const startPos = toLatLng(routingResult.start)
+  const destPos = toLatLng(routingResult.destination)
 
   return (
     <div className="route-map-wrap">
-      <MapContainer center={[19.073, 72.872]} zoom={12} scrollWheelZoom className="route-map">
+      <MapContainer key={mapKey} center={regionCenter || DEFAULT_CENTER} zoom={12} scrollWheelZoom className="route-map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapViewport start={routingResult.start} destination={routingResult.destination} />
+        <MapViewport start={routingResult.start} destination={routingResult.destination} regionCenter={regionCenter} />
         {fallbackPolylines}
-        {roadNetwork.nodes.map((node) => {
-          const isStart = node.id === routingResult.start?.id || node.name === routingResult.start?.name
-          const isDest = node.id === routingResult.destination?.id || node.name === routingResult.destination?.name
+        {startPos && (
+          <CircleMarker
+            center={[startPos.lat, startPos.lng]}
+            radius={8}
+            pathOptions={{ color: '#10b981', fillColor: '#10b981', fillOpacity: 1, weight: 2 }}
+          >
+            <Popup>
+              <strong>{routingResult.start?.name || 'Origin'}</strong>
+            </Popup>
+          </CircleMarker>
+        )}
+        {destPos && (
+          <CircleMarker
+            center={[destPos.lat, destPos.lng]}
+            radius={8}
+            pathOptions={{ color: '#2563eb', fillColor: '#2563eb', fillOpacity: 1, weight: 2 }}
+          >
+            <Popup>
+              <strong>{routingResult.destination?.name || 'Destination'}</strong>
+            </Popup>
+          </CircleMarker>
+        )}
+        {(routingResult.floodHotspots || []).map((street) => {
+          const center = toLatLng(street)
+          if (!center) return null
           return (
             <CircleMarker
-              key={node.id}
-              center={[node.latitude, node.longitude]}
-              radius={isStart || isDest ? 8 : 5}
+              key={street.id || `${center.lat}-${center.lng}`}
+              center={[center.lat, center.lng]}
+              radius={Math.max(8, Math.min(16, (street.waterDepth || 8) / 2))}
               pathOptions={{
-                color: isStart ? '#10b981' : isDest ? '#2563eb' : '#64748b',
-                fillColor: isStart ? '#10b981' : isDest ? '#2563eb' : '#ffffff',
-                fillOpacity: 1,
-                weight: 2,
+                color: street.waterDepth >= 30 ? '#ef4444' : '#f59e0b',
+                fillColor: street.waterDepth >= 30 ? '#ef4444' : '#f59e0b',
+                fillOpacity: 0.35,
+                weight: 1.5,
               }}
             >
               <Popup>
-                <strong>{node.name}</strong>
+                <strong>{street.name}</strong><br />
+                {street.waterDepth} cm predicted depth
               </Popup>
             </CircleMarker>
           )
