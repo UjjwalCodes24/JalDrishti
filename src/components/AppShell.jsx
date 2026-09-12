@@ -22,14 +22,14 @@ function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand-mark"><span>◒</span><div><strong>JalDrishti</strong><small>Flood intelligence</small></div></div>
+        <div className="brand-mark"><span>◒</span><div><strong>JalDrishti</strong><small>Urban Flood Monitoring</small></div></div>
         <nav className="main-nav" aria-label="Primary navigation">
           {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span className="nav-icon">{item.icon}</span>{item.label}</NavLink>)}
         </nav>
         <div className="sidebar-note"><span className="status-dot" /> System operational<p>Prototype environment</p></div>
       </aside>
       <div className="main-area">
-        <header className="topbar"><div><span className="topbar-kicker">URBAN FLOOD INTELLIGENCE</span><span className="topbar-location">Mumbai Metropolitan Area</span></div><div className="topbar-meta"><span className="live-indicator"><span className="status-dot" /> Live monitoring</span><span>{currentTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} · {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} IST</span></div></header>
+        <header className="topbar"><div><span className="topbar-kicker">URBAN FLOOD MONITORING</span><span className="topbar-location">Mumbai Metropolitan Area</span></div><div className="topbar-meta"><span className="live-indicator"><span className="status-dot" /> Live monitoring</span><span>{currentTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} · {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} IST</span></div></header>
         <main className="page-content"><div key={location.pathname} className={`page-transition route-${location.pathname.slice(1).replaceAll('/', '-') || 'dashboard'}`}><Outlet /></div></main>
       </div>
     </div>

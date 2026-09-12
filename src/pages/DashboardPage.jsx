@@ -5,15 +5,25 @@ import terrain from '../data/terrain.json'
 import drainageNetwork from '../data/drainageNetwork.json'
 import InteractiveRiskMap from '../components/InteractiveRiskMap'
 import { floodForecast, getFloodPrediction } from '../services/floodEngine'
+import { getExplainabilityData } from '../services/explainabilityService'
 import { Panel, PageHeader, RiskBadge } from '../components/ui'
 
 const quickModules = [
-  { icon: '🌧', title: 'Flood Risk Map', metric: '3 Hotspots · 4 Wards', label: 'Open Map', to: '/risk-map', tone: 'teal' },
-  { icon: '🚑', title: 'Flood-Safe Routes', metric: '2 Passable Corridors', label: 'Plan Route', to: '/safe-routes', tone: 'blue' },
-  { icon: '🤖', title: 'AI Nowcast', metric: '+3h Radar Horizon', label: 'View Forecast', to: '/nowcast', tone: 'cyan' },
-  { icon: '🔍', title: 'Explainable AI', metric: 'SHAP Root-Cause', label: 'Explain Why', to: '/explainable-ai', tone: 'purple' },
-  { icon: '🚨', title: 'Emergency Response', metric: '4 Field Units Ready', label: 'Deploy Units', to: '/emergency-response', tone: 'red' },
-  { icon: '📊', title: 'Situation Reports', metric: 'Automated Briefing', label: 'View Report', to: '/dashboard', tone: 'slate' },
+  { icon: '🌧', title: 'Flood Risk Map', metric: '3 hotspots · 4 wards', label: 'Open Map', to: '/risk-map', tone: 'teal' },
+  { icon: '🚑', title: 'Flood-Safe Routes', metric: '2 passable corridors', label: 'Plan Route', to: '/safe-routes', tone: 'blue' },
+  { icon: '⏱', title: 'AI Nowcast', metric: '3-hour forecast', label: 'View Forecast', to: '/nowcast', tone: 'cyan' },
+  { icon: '🔍', title: 'Explainable AI', metric: 'Flood cause analysis', label: 'Explain Why', to: '/explainable-ai', tone: 'purple' },
+  { icon: '🚨', title: 'Emergency Response', metric: 'Response units', label: 'Deploy Units', to: '/emergency-response', tone: 'red' },
+  { icon: '📊', title: 'Situation Reports', metric: 'Current situation', label: 'View Report', to: '/dashboard', tone: 'slate' },
+]
+
+const dataSources = [
+  { name: 'IMD Rainfall', status: 'Demo data', statusType: 'demo', detail: 'Rainfall observations' },
+  { name: 'Doppler Weather Radar', status: 'Simulation', statusType: 'sim', detail: 'Radar rainfall input' },
+  { name: 'Digital Elevation Model', status: 'Loaded', statusType: 'loaded', detail: '3 m terrain data' },
+  { name: 'Drainage Network', status: 'Loaded', statusType: 'loaded', detail: '12 monitored nodes' },
+  { name: 'AI Nowcast', status: 'Available', statusType: 'avail', detail: '0–3 hour forecast' },
+  { name: 'Safe Routes', status: 'Available', statusType: 'avail', detail: '10 monitored links' },
 ]
 
 function DashboardPage() {
@@ -25,28 +35,26 @@ function DashboardPage() {
   const sortedStreets = useMemo(() => [...prediction.streets].sort((a, b) => b.waterDepth - a.waterDepth), [prediction.streets])
   const priorityStreets = sortedStreets.slice(0, 3)
   const focusedStreetObj = prediction.streets.find((street) => street.id === focusedStreet)
+  const activeStreet = focusedStreetObj || priorityStreets[0] || prediction.streets[0]
   const criticalZones = prediction.streets.filter((street) => street.risk === 'CRITICAL').length
   const affectedRoads = prediction.streets.filter((street) => street.waterDepth >= 15).length
   const status = prediction.highestWaterDepth >= 30 ? 'CRITICAL' : prediction.highestWaterDepth >= 15 ? 'HIGH' : 'MODERATE'
   const setHorizon = (time) => setSelectedTime(time)
   const toggleMapLayer = (layer) => setActiveMapLayers((current) => ({ ...current, [layer]: !current[layer] }))
-  const insightFactors = [
-    ['Drainage overload', Math.min(99, Math.round(prediction.drainage.utilization * 31)), 'critical'],
-    ['Surface runoff', Math.min(99, Math.round(prediction.streets[0].runoffVolume / Math.max(prediction.intensity, 1) * 24)), 'info'],
-    ['Low elevation', Math.round((1 - prediction.streets[0].terrain.elevation / 20) * 18), 'info'],
-    ['Rainfall intensity', Math.round(prediction.intensity / 80 * 14), 'warning'],
-  ]
+  const explainability = getExplainabilityData(activeStreet?.id || 'ST-KUR-01', selectedTime)
+  const topDrivers = explainability.factors.slice(0, 4)
+  const primaryDriver = explainability.factors[0]
 
   return (
     <>
       <PageHeader
-        eyebrow="URBAN FLOOD INTELLIGENCE"
+        eyebrow="URBAN FLOOD MONITORING"
         title="Flood Intelligence Dashboard"
-        description="Real-time flood risk, rainfall and drainage conditions."
+        description="Monitor rainfall, drainage conditions and flood risk across the city."
         action={
           <div className="header-status-indicator">
             <span className="status-dot" />
-            <span>Live Monitoring</span>
+            <span>Live monitoring</span>
           </div>
         }
       />
@@ -76,11 +84,11 @@ function DashboardPage() {
         </div>
         <div className="status-banner-action">
           <div className="action-content">
-            <span className="action-label">Action required:</span>
+            <span className="action-label">ACTION REQUIRED:</span>
             <span className="action-text">Deploy auxiliary dewatering pumps and activate traffic diversions.</span>
           </div>
           <Link to="/emergency-response" className="action-link-btn">
-            Operations &rarr;
+            Emergency Response &rarr;
           </Link>
         </div>
       </section>
@@ -97,7 +105,7 @@ function DashboardPage() {
               <span className="kpi-card-unit">mm/hr</span>
             </div>
             <div className="kpi-card-status">
-              {prediction.intensity >= 35 ? 'Heavy downpour' : prediction.intensity >= 15 ? 'Moderate showers' : 'Light precipitation'}
+              {prediction.intensity >= 35 ? 'Heavy rainfall' : prediction.intensity >= 15 ? 'Moderate showers' : 'Light precipitation'}
             </div>
           </div>
           <div className="kpi-card-footer">
@@ -115,7 +123,7 @@ function DashboardPage() {
               <strong>{status.charAt(0) + status.slice(1).toLowerCase()}</strong>
             </div>
             <div className="kpi-card-status">
-              {criticalZones} {criticalZones === 1 ? 'hotspot' : 'hotspots'}
+              {criticalZones} {criticalZones === 1 ? 'location requires attention' : 'locations require attention'}
             </div>
           </div>
           <div className="kpi-card-footer">
@@ -133,7 +141,7 @@ function DashboardPage() {
               <strong>{Math.round(prediction.drainage.utilization * 100)}%</strong>
             </div>
             <div className="kpi-card-status">
-              {prediction.drainage.overloadedNodes.length} overloaded nodes
+              {prediction.drainage.overloadedNodes.length} nodes overloaded
             </div>
           </div>
           <div className="kpi-card-footer">
@@ -151,7 +159,7 @@ function DashboardPage() {
               <strong>{affectedRoads}</strong>
             </div>
             <div className="kpi-card-status">
-              {affectedRoads > 3 ? 'restricted' : 'caution'}
+              {affectedRoads} {affectedRoads === 1 ? 'road restricted' : 'roads restricted'}
             </div>
           </div>
           <div className="kpi-card-footer">
@@ -164,9 +172,9 @@ function DashboardPage() {
         <Panel className="dashboard-map-card">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">GIS DIGITAL TWIN</span>
+              <span className="eyebrow">FLOOD RISK MAP</span>
               <h2>Live Flood Situation Map</h2>
-              <p className="muted">Real-time hotspots, drainage and road inundation.</p>
+              <p className="muted">Current flood risk, water depth and affected roads.</p>
             </div>
             <span className="map-live-chip"><span className="pulse-dot" /> {selectedTime}</span>
           </div>
@@ -186,21 +194,21 @@ function DashboardPage() {
             
             {/* Top-Left: Live Telemetry / Monitoring Status */}
             <div className="map-glass map-status-overlay">
-              <span className="map-status-title"><span className="status-dot" /> Live Monitoring</span>
-              <small className="map-status-subtitle">MMR Digital Twin</small>
+              <span className="map-status-title"><span className="status-dot" /> Live monitoring</span>
+              <small className="map-status-subtitle">Mumbai Metropolitan Area</small>
             </div>
 
             {/* Top-Right: Intelligence Layers Control */}
             <div className="map-glass map-layer-overlay">
-              <span className="map-layer-title">Intelligence Layers</span>
+              <span className="map-layer-title">MAP LAYERS</span>
               <div className="map-layer-list">
                 {[
-                  ['risk', 'Flood Risk'],
-                  ['depth', 'Water Depth'],
-                  ['runoff', 'Rainfall Runoff'],
-                  ['network', 'Drainage Network'],
-                  ['capacity', 'Overloaded Nodes'],
-                  ['terrain', 'DEM Elevation']
+                  ['risk', 'Flood risk'],
+                  ['depth', 'Water depth'],
+                  ['runoff', 'Rainfall'],
+                  ['network', 'Drainage network'],
+                  ['capacity', 'Overloaded nodes'],
+                  ['terrain', 'Elevation']
                 ].map(([id, label]) => (
                   <label key={id} className="map-layer-item">
                     <input
@@ -263,7 +271,7 @@ function DashboardPage() {
                 </div>
                 <div className="map-inspector-action">
                   <span className={`risk-badge ${focusedStreetObj.risk.toLowerCase()}`}>{focusedStreetObj.risk}</span>
-                  <p>{focusedStreetObj.waterDepth >= 60 ? 'Deploy pumps & divert traffic' : focusedStreetObj.waterDepth >= 30 ? 'Emergency response staged' : 'Monitor traffic flow'}</p>
+                  <p>{focusedStreetObj.waterDepth >= 60 ? 'Restrict traffic · Deploy pumps' : focusedStreetObj.waterDepth >= 30 ? 'Prepare emergency response' : 'Monitor traffic flow'}</p>
                 </div>
               </div>
             )}
@@ -291,7 +299,7 @@ function DashboardPage() {
               const actionText = street.waterDepth >= 60
                 ? 'Restrict traffic · Deploy pumps'
                 : street.waterDepth >= 30
-                ? 'Stage emergency response'
+                ? 'Prepare emergency response'
                 : 'Monitor traffic flow'
 
               return (
@@ -335,17 +343,19 @@ function DashboardPage() {
       </div>
 
       <Panel className="dashboard-forecast-panel">
-        <div className="panel-heading">
+        <div className="panel-heading forecast-panel-heading">
           <div>
-            <span className="eyebrow">FORECAST PROGRESSION</span>
+            <span className="eyebrow">0–3 HOUR STREET-LEVEL NOWCAST</span>
             <h2>Flood Impact Forecast</h2>
-            <p className="muted">Temporal impact horizon across next 60 minutes.</p>
+            <p className="muted">Street-level flood progression over the next 3 hours.</p>
           </div>
-          <div className="forecast-horizon-controls">
+          <div className="forecast-horizon-controls" role="tablist" aria-label="Forecast horizon selector">
             {floodForecast.map((point) => (
               <button
                 type="button"
-                className={selectedTime === point.time ? 'active' : ''}
+                role="tab"
+                aria-selected={selectedTime === point.time}
+                className={`forecast-horizon-btn ${selectedTime === point.time ? 'active' : ''}`}
                 key={point.time}
                 onClick={() => setHorizon(point.time)}
               >
@@ -354,66 +364,196 @@ function DashboardPage() {
             ))}
           </div>
         </div>
-        <div className="dashboard-timeline">
-          <div>
-            <b>NOW</b>
-            <strong className="timeline-metric-val">{prediction.intensity} mm/h</strong>
-            <span>Inundation onset</span>
+
+        {/* 6-Horizon Step Progression Grid */}
+        <div className="forecast-timeline-grid">
+          {floodForecast.map((point, index) => {
+            const isSelected = selectedTime === point.time
+            const pointRisk = point.highestWaterDepth >= 30 ? 'CRITICAL' : point.highestWaterDepth >= 15 ? 'HIGH' : point.highestWaterDepth >= 5 ? 'MODERATE' : 'SAFE'
+            const roadsCount = point.streets.filter((s) => s.waterDepth >= 15).length
+            const stageName = index === 0
+              ? 'Baseline'
+              : index === 1
+              ? 'Early accumulation'
+              : index === 2
+              ? 'Drainage stress'
+              : index === 3
+              ? 'Peak inundation'
+              : index === 4
+              ? 'Flood impact'
+              : 'Recovery'
+
+            return (
+              <button
+                type="button"
+                key={point.time}
+                className={`forecast-timeline-step severity-${pointRisk.toLowerCase()} ${isSelected ? 'selected' : ''}`}
+                onClick={() => setHorizon(point.time)}
+              >
+                <div className="timeline-step-header">
+                  <span className="timeline-step-time">{point.time}</span>
+                  <span className={`forecast-risk-tag ${pointRisk.toLowerCase()}`}>{pointRisk}</span>
+                </div>
+                <div className="timeline-step-stage">{stageName}</div>
+                <div className="timeline-step-metrics">
+                  <div className="timeline-metric-row">
+                    <span className="timeline-metric-label">Depth</span>
+                    <strong className="timeline-metric-val">{point.highestWaterDepth} cm</strong>
+                  </div>
+                  <div className="timeline-metric-row">
+                    <span className="timeline-metric-label">Drainage</span>
+                    <span className="timeline-metric-sub">{Math.round(point.drainage.utilization * 100)}%</span>
+                  </div>
+                  <div className="timeline-metric-row">
+                    <span className="timeline-metric-label">Rain</span>
+                    <span className="timeline-metric-sub">{point.intensity} mm/hr</span>
+                  </div>
+                  <div className="timeline-metric-row">
+                    <span className="timeline-metric-label">Roads</span>
+                    <span className="timeline-metric-sub">{roadsCount} at risk</span>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Selected Horizon Detail Summary */}
+        <div className="forecast-selected-summary">
+          <div className="selected-summary-kicker">
+            <div className="summary-horizon-badge">
+              <span>SELECTED HORIZON</span>
+              <strong>{selectedTime}</strong>
+            </div>
+            <div className="summary-risk-badge">
+              <span>ESTIMATED RISK</span>
+              <RiskBadge level={status} />
+            </div>
           </div>
-          <div>
-            <b>+30 MIN</b>
-            <strong className="timeline-metric-val">85% load</strong>
-            <span>Drainage overload</span>
-          </div>
-          <div>
-            <b>+45 MIN</b>
-            <strong className="timeline-metric-val">{prediction.highestWaterDepth} cm</strong>
-            <span>Kurla peak flood</span>
-          </div>
-          <div>
-            <b>+60 MIN</b>
-            <strong className="timeline-metric-val">Closed</strong>
-            <span>Traffic diversion</span>
+          <div className="selected-summary-stats">
+            <div className="summary-stat-box">
+              <span className="stat-box-label">Rainfall</span>
+              <strong className="stat-box-value">{prediction.intensity} mm/hr</strong>
+              <small className="stat-box-sub">{prediction.intensity >= 35 ? 'Heavy rainfall' : 'Moderate showers'}</small>
+            </div>
+            <div className="summary-stat-box">
+              <span className="stat-box-label">Peak Water Depth</span>
+              <strong className={`stat-box-value risk-${status.toLowerCase()}`}>{prediction.highestWaterDepth} cm</strong>
+              <small className="stat-box-sub">Max at {prediction.streets.reduce((max, s) => s.waterDepth > max.waterDepth ? s : max, prediction.streets[0])?.name || 'Kurla'}</small>
+            </div>
+            <div className="summary-stat-box">
+              <span className="stat-box-label">Drainage Load</span>
+              <strong className="stat-box-value">{Math.round(prediction.drainage.utilization * 100)}%</strong>
+              <small className="stat-box-sub">{prediction.drainage.overloadedNodes.length} nodes overloaded</small>
+            </div>
+            <div className="summary-stat-box">
+              <span className="stat-box-label">Affected Roads</span>
+              <strong className="stat-box-value">{affectedRoads} sectors</strong>
+              <small className="stat-box-sub">2 safe corridors open</small>
+            </div>
           </div>
         </div>
       </Panel>
 
       <Panel className="ai-situation-insight">
-        <div>
-          <span className="eyebrow">AI ROOT-CAUSE ANALYSIS</span>
-          <h2>Key Flood Drivers · {priorityStreets[0]?.name || 'Kurla'}</h2>
-          <div className="insight-chip-group">
-            <span className="insight-chip red">Culvert Backflow (92%)</span>
-            <span className="insight-chip blue">Low Elevation (3.2m DEM)</span>
-            <span className="insight-chip teal">Impervious Runoff (68%)</span>
-          </div>
-          <p className="insight-summary-short">
-            Topographic depression + drainage saturation drive <strong>84% of local flood accumulation</strong>.
-          </p>
-        </div>
-        <div className="insight-factor-list">
-          {insightFactors.map(([label, value, tone]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <b>{value}%</b>
-              <i className={tone}>
-                <em style={{ width: `${value * 2.5}%` }} />
-              </i>
+        <div className="insight-header-row">
+          <div>
+            <span className="eyebrow">WHY THIS LOCATION IS AT RISK</span>
+            <h2>Why will this location flood?</h2>
+            <div className="insight-target-location">
+              <span className="location-pin-icon" aria-hidden="true">📍</span>
+              <strong>{activeStreet.name}</strong>
+              <span className={`risk-badge ${activeStreet.risk.toLowerCase()}`}>{activeStreet.risk}</span>
+              <span className="location-depth-kicker">{activeStreet.waterDepth} cm predicted depth</span>
             </div>
-          ))}
+          </div>
+          <Link className="insight-deepdive-link" to="/explainable-ai">
+            Root-Cause Analysis <span>→</span>
+          </Link>
         </div>
-        <Link className="text-link" to="/explainable-ai">
-          Explainable AI <span>→</span>
-        </Link>
+
+        <div className="insight-bento-grid">
+          {/* 1. Primary Driver & Causal Conclusion */}
+          <div className="insight-summary-card">
+            <div className="insight-primary-driver">
+              <span className="primary-driver-label">PRIMARY DRIVER</span>
+              <strong className="primary-driver-title">{primaryDriver?.label || 'Drainage utilization'}</strong>
+              <span className="primary-driver-weight">{primaryDriver?.contribution || 32}% model impact</span>
+            </div>
+            <p className="insight-causal-summary">
+              {explainability.explanation}
+            </p>
+            <div className="insight-operational-action">
+              <span className="action-tag">RECOMMENDED ACTION</span>
+              <p>{explainability.operationalExplanation}</p>
+            </div>
+          </div>
+
+          {/* 2. Contributing Factors (Horizontal Ranked Bars) */}
+          <div className="insight-factors-card">
+            <div className="factors-card-header">
+              <span className="factors-card-title">CONTRIBUTING FACTORS</span>
+              <span className="factors-card-meta">Ranked contribution</span>
+            </div>
+            <div className="insight-factor-list">
+              {topDrivers.map((factor, index) => (
+                <div className="insight-factor-item" key={factor.id}>
+                  <div className="factor-item-info">
+                    <span className="factor-item-rank">0{index + 1}</span>
+                    <span className="factor-item-label">{factor.label}</span>
+                    <strong className="factor-item-pct">{factor.contribution}%</strong>
+                  </div>
+                  <div className="factor-progress-track">
+                    <div
+                      className={`factor-progress-fill ${index === 0 ? 'top-factor' : ''}`}
+                      style={{ width: `${Math.min(100, factor.contribution * 2.2)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Concrete Evidence Points */}
+          <div className="insight-evidence-card">
+            <div className="evidence-card-header">
+              <span className="evidence-card-title">EVIDENCE FROM THE MODEL</span>
+              <span className="evidence-card-meta">Sensor & terrain data</span>
+            </div>
+            <ul className="insight-evidence-list">
+              <li>
+                <span className="evidence-bullet" aria-hidden="true">•</span>
+                <div className="evidence-text">
+                  <strong>Culvert surcharge & backflow</strong>
+                  <span>{Math.round(prediction.drainage.backflowProbability * 100)}% backflow probability</span>
+                </div>
+              </li>
+              <li>
+                <span className="evidence-bullet" aria-hidden="true">•</span>
+                <div className="evidence-text">
+                  <strong>Topographic elevation</strong>
+                  <span>{activeStreet.terrain?.elevation} m DEM ({activeStreet.terrain?.terrainType || 'low-lying basin'})</span>
+                </div>
+              </li>
+              <li>
+                <span className="evidence-bullet" aria-hidden="true">•</span>
+                <div className="evidence-text">
+                  <strong>Surface runoff response</strong>
+                  <span>{activeStreet.runoffVolume} m³ ({Math.min(99, Math.round(activeStreet.runoffVolume / Math.max(prediction.intensity, 1) * 100))}% response)</span>
+                </div>
+              </li>
+            </ul>
+          </div>
+        </div>
       </Panel>
 
       <section className="quick-modules-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">OPERATIONAL MODULES</span>
+            <span className="eyebrow">DECISION SUPPORT</span>
             <h2>Decision Support Actions</h2>
           </div>
-          <span className="muted">Live capabilities</span>
+          <span className="muted">What you can do next</span>
         </div>
         <div className="quick-module-grid">
           {quickModules.map((module) => (
@@ -430,25 +570,34 @@ function DashboardPage() {
       </section>
 
       <Panel className="data-sources-panel">
-        <div>
-          <span className="eyebrow">TELEMETRY SOURCES</span>
-          <h2>Live Sensor & Model Feeds</h2>
+        <div className="data-sources-header">
+          <div>
+            <span className="eyebrow">MONITORING & DATA SOURCES</span>
+            <h2>Data Sources</h2>
+            <p className="muted">Technical inputs and spatial datasets driving the current flood assessment.</p>
+          </div>
+          <div className="system-operational">
+            <span className="status-dot" /> SYSTEM OPERATIONAL · DEMO MODE
+          </div>
         </div>
-        <div className="data-source-list">
-          <span className="data-feed-badge"><b>🌧 IMD Rainfall</b><span className="feed-status live"><i className="pulse-dot" /> Live Radar</span></span>
-          <span className="data-feed-badge"><b>🔵 Drainage Network</b><span className="feed-status ok">12 Nodes Active</span></span>
-          <span className="data-feed-badge"><b>🗺 DEM Terrain</b><span className="feed-status ok">3m Resolution</span></span>
-          <span className="data-feed-badge"><b>🤖 AI Nowcast</b><span className="feed-status ok">Calibrated</span></span>
-          <span className="data-feed-badge"><b>🚑 Safe Routes</b><span className="feed-status ok">10 Links Monitored</span></span>
-        </div>
-        <div className="system-operational">
-          <span className="status-dot" /> SYSTEM OPERATIONAL
+        <div className="data-sources-grid">
+          {dataSources.map((source) => (
+            <div className="data-source-card" key={source.name}>
+              <div className="source-card-header">
+                <strong className="source-card-title">{source.name}</strong>
+                <span className={`source-status-badge ${source.statusType}`}>
+                  <span className="status-dot" /> {source.status}
+                </span>
+              </div>
+              <span className="source-card-detail">{source.detail}</span>
+            </div>
+          ))}
         </div>
       </Panel>
 
       <footer className="dashboard-footer">
-        <strong>JalDrishti — Urban Flood Intelligence & Decision Support System</strong>
-        <span>Smart India Hackathon 2026 · IMD Radar • Drainage Telemetry • DEM • AI Models</span>
+        <strong>JalDrishti · Urban Flood Monitoring & Decision Support</strong>
+        <span>IMD Doppler Radar • Municipal Drainage Network • Digital Elevation Model • Hydrological Engine</span>
       </footer>
     </>
   )

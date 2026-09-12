@@ -50,7 +50,7 @@ function FloodPopup({ street, prediction, utilization }) {
   const runoffPercent = Math.min(99, Math.round(street.runoffVolume / Math.max(prediction.intensity, 1) * 100))
   return (
     <div className="map-popup flood-popup">
-      <span className="eyebrow">Street intelligence · {prediction.time}</span>
+      <span className="eyebrow">Street status · {prediction.time}</span>
       <strong>{street.name}</strong>
       <div className="popup-depth-pair">
         <span>Current <b>{street.currentWaterDepth} cm</b></span>
