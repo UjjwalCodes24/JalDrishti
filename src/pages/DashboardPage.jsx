@@ -5,7 +5,6 @@ import terrain from '../data/terrain.json'
 import drainageNetwork from '../data/drainageNetwork.json'
 import InteractiveRiskMap from '../components/InteractiveRiskMap'
 import { floodForecast, getFloodPrediction } from '../services/floodEngine'
-import { getRainfallSourceStatus } from '../services/rainfallService'
 import { Panel, PageHeader, RiskBadge } from '../components/ui'
 
 const quickModules = [
@@ -23,9 +22,9 @@ function DashboardPage() {
   const [focusedStreet, setFocusedStreet] = useState('')
   const [activeMapLayers, setActiveMapLayers] = useState({ risk: true, depth: true, network: true, capacity: true, terrain: false, runoff: true })
   const prediction = getFloodPrediction(selectedTime)
-  const source = getRainfallSourceStatus()
   const sortedStreets = useMemo(() => [...prediction.streets].sort((a, b) => b.waterDepth - a.waterDepth), [prediction.streets])
   const priorityStreets = sortedStreets.slice(0, 3)
+  const focusedStreetObj = prediction.streets.find((street) => street.id === focusedStreet)
   const criticalZones = prediction.streets.filter((street) => street.risk === 'CRITICAL').length
   const affectedRoads = prediction.streets.filter((street) => street.waterDepth >= 15).length
   const status = prediction.highestWaterDepth >= 30 ? 'CRITICAL' : prediction.highestWaterDepth >= 15 ? 'HIGH' : 'MODERATE'
@@ -41,88 +40,123 @@ function DashboardPage() {
   return (
     <>
       <PageHeader
-        eyebrow="URBAN FLOOD INTELLIGENCE SYSTEM"
-        title="Mumbai Flood Command Center"
-        description="Real-time AI flood prediction, telemetry & emergency decision support."
-        action={<span className="prototype-label">LIVE DATA MONITORING</span>}
+        eyebrow="URBAN FLOOD INTELLIGENCE"
+        title="Flood Intelligence Dashboard"
+        description="Real-time flood risk, rainfall and drainage conditions."
+        action={
+          <div className="header-status-indicator">
+            <span className="status-dot" />
+            <span>Live Monitoring</span>
+          </div>
+        }
       />
 
       <section className="dashboard-status-banner">
-        <div>
-          <div className="status-banner-head">
-            <span className="eyebrow">🔴 CURRENT STATUS</span>
-            <span className="status-live-tag">LIVE ASSESSMENT</span>
+        <div className="status-banner-main">
+          <div className="status-banner-header">
+            <span className="status-banner-kicker">CURRENT STATUS</span>
+            <span className={`status-banner-badge ${status.toLowerCase()}`}>{status} ALERT</span>
           </div>
-          <h2>{status} ALERT</h2>
-          <div className="status-signal-chips">
-            <span className="signal-chip red">🌧 {prediction.intensity} mm/h Downpour</span>
-            <span className="signal-chip orange">≋ {Math.round(prediction.drainage.utilization * 100)}% Drainage Load</span>
-            <span className="signal-chip red">🚨 {priorityStreets[0]?.name || 'Kurla'} Inundated</span>
-          </div>
-          <div className="status-action-row">
-            <Link to="/emergency-response" className="status-action-pill">
-              ⚡ Action: Deploy response pumps & activate traffic diversions →
-            </Link>
+          <div className="status-banner-telemetry">
+            <div className="telemetry-item">
+              <span className="telemetry-label">Rainfall</span>
+              <strong className="telemetry-value">{prediction.intensity} mm/hr</strong>
+            </div>
+            <span className="telemetry-divider" aria-hidden="true" />
+            <div className="telemetry-item">
+              <span className="telemetry-label">Drainage load</span>
+              <strong className="telemetry-value">{Math.round(prediction.drainage.utilization * 100)}%</strong>
+            </div>
+            <span className="telemetry-divider" aria-hidden="true" />
+            <div className="telemetry-item">
+              <span className="telemetry-label">Affected location</span>
+              <strong className="telemetry-value">{priorityStreets[0]?.name || 'Kurla'}</strong>
+            </div>
           </div>
         </div>
-        <div className="status-banner-metrics">
-          <div>
-            <strong>{prediction.highestWaterDepth} cm</strong>
-            <span>Peak Depth</span>
+        <div className="status-banner-action">
+          <div className="action-content">
+            <span className="action-label">Action required:</span>
+            <span className="action-text">Deploy auxiliary dewatering pumps and activate traffic diversions.</span>
           </div>
-          <div>
-            <strong>{criticalZones}</strong>
-            <span>Critical Zones</span>
-          </div>
-          <div>
-            <strong>~45 min</strong>
-            <span>Time to Impact</span>
-          </div>
+          <Link to="/emergency-response" className="action-link-btn">
+            Operations &rarr;
+          </Link>
         </div>
       </section>
 
       <div className="situation-summary-grid">
-        <div className="situation-card rainfall">
-          <span>🌧</span>
-          <small>RAINFALL</small>
-          <strong>{prediction.intensity} <em>mm/hr</em></strong>
-          <span className="kpi-tag blue">⛈ Heavy Downpour</span>
-          <b>📡 {source.isLive ? 'IMD Live Feed' : 'IMD / Fallback Feed'}</b>
+        {/* 1. Rainfall */}
+        <div className="situation-card">
+          <div className="kpi-card-header">
+            <span className="kpi-card-label">RAINFALL</span>
+          </div>
+          <div className="kpi-card-body">
+            <div className="kpi-card-value">
+              <strong>{prediction.intensity}</strong>
+              <span className="kpi-card-unit">mm/hr</span>
+            </div>
+            <div className="kpi-card-status">
+              {prediction.intensity >= 35 ? 'Heavy downpour' : prediction.intensity >= 15 ? 'Moderate showers' : 'Light precipitation'}
+            </div>
+          </div>
+          <div className="kpi-card-footer">
+            IMD / Doppler Radar
+          </div>
         </div>
-        <div className="situation-card flood-risk">
-          <span>◉</span>
-          <small>FLOOD RISK</small>
-          <strong>{status}</strong>
-          <span className="kpi-tag red">🚨 {criticalZones} Active Hotspots</span>
-          <b>⚡ Immediate Action Req.</b>
+
+        {/* 2. Flood Risk */}
+        <div className="situation-card">
+          <div className="kpi-card-header">
+            <span className="kpi-card-label">FLOOD RISK</span>
+          </div>
+          <div className="kpi-card-body">
+            <div className={`kpi-card-value risk-${status.toLowerCase()}`}>
+              <strong>{status.charAt(0) + status.slice(1).toLowerCase()}</strong>
+            </div>
+            <div className="kpi-card-status">
+              {criticalZones} {criticalZones === 1 ? 'hotspot' : 'hotspots'}
+            </div>
+          </div>
+          <div className="kpi-card-footer">
+            Immediate attention
+          </div>
         </div>
-        <div className="situation-card emergency">
-          <span>!</span>
-          <small>EMERGENCY STATUS</small>
-          <strong>{criticalZones} <em>active hotspots</em></strong>
-          <span className="kpi-tag red">🚨 Response teams ready</span>
-          <b>📡 Priority queue active</b>
+
+        {/* 3. Drainage Load */}
+        <div className="situation-card">
+          <div className="kpi-card-header">
+            <span className="kpi-card-label">DRAINAGE LOAD</span>
+          </div>
+          <div className="kpi-card-body">
+            <div className="kpi-card-value">
+              <strong>{Math.round(prediction.drainage.utilization * 100)}%</strong>
+            </div>
+            <div className="kpi-card-status">
+              {prediction.drainage.overloadedNodes.length} overloaded nodes
+            </div>
+          </div>
+          <div className="kpi-card-footer">
+            High backflow risk
+          </div>
         </div>
-        <div className="situation-card drainage">
-          <span>≋</span>
-          <small>DRAINAGE NETWORK</small>
-          <strong>{Math.round(prediction.drainage.utilization * 100)}%</strong>
-          <span className="kpi-tag orange">⚠️ {prediction.drainage.overloadedNodes.length} Overloaded Nodes</span>
-          <b>🔄 High Backflow Risk</b>
-        </div>
-        <div className="situation-card roads">
-          <span>▣</span>
-          <small>ROAD NETWORK</small>
-          <strong>{affectedRoads}</strong>
-          <span className="kpi-tag teal">🚧 Inundated Roads</span>
-          <b>🚑 2 Safe Corridors Open</b>
-        </div>
-        <div className="situation-card road-status">
-          <span>▰</span>
-          <small>ROAD STATUS</small>
-          <strong>{affectedRoads > 3 ? 'RESTRICTED' : 'CAUTION'}</strong>
-          <span className="kpi-tag orange">🚧 {affectedRoads} roads monitored</span>
-          <b>↗ Diversions being assessed</b>
+
+        {/* 4. Roads at Risk */}
+        <div className="situation-card">
+          <div className="kpi-card-header">
+            <span className="kpi-card-label">ROADS AT RISK</span>
+          </div>
+          <div className="kpi-card-body">
+            <div className="kpi-card-value">
+              <strong>{affectedRoads}</strong>
+            </div>
+            <div className="kpi-card-status">
+              {affectedRoads > 3 ? 'restricted' : 'caution'}
+            </div>
+          </div>
+          <div className="kpi-card-footer">
+            2 safe corridors open
+          </div>
         </div>
       </div>
 
@@ -130,9 +164,9 @@ function DashboardPage() {
         <Panel className="dashboard-map-card">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">LIVE MONITORING · DIGITAL TWIN</span>
+              <span className="eyebrow">GIS DIGITAL TWIN</span>
               <h2>Live Flood Situation Map</h2>
-              <p className="muted">Real-time hotspots, drainage & road inundation.</p>
+              <p className="muted">Real-time hotspots, drainage and road inundation.</p>
             </div>
             <span className="map-live-chip"><span className="pulse-dot" /> {selectedTime}</span>
           </div>
@@ -149,86 +183,154 @@ function DashboardPage() {
               onSelectStreet={setFocusedStreet}
               digitalTwin
             />
+            
+            {/* Top-Left: Live Telemetry / Monitoring Status */}
             <div className="map-glass map-status-overlay">
-              <span><i className="pulse-dot" /> LIVE FLOOD MONITORING</span>
-              <small>Mumbai Metropolitan Region · 3D view</small>
+              <span className="map-status-title"><span className="status-dot" /> Live Monitoring</span>
+              <small className="map-status-subtitle">MMR Digital Twin</small>
             </div>
+
+            {/* Top-Right: Intelligence Layers Control */}
             <div className="map-glass map-layer-overlay">
-              <b>INTELLIGENCE LAYERS</b>
-              {[['risk', 'Flood Risk'], ['runoff', 'Rainfall'], ['depth', 'Water Depth'], ['network', 'Drainage'], ['depth', 'Roads']].map(([id, label], index) => (
-                <label key={`${id}-${index}`}>
-                  <input
-                    type="checkbox"
-                    checked={activeMapLayers[id] !== false}
-                    onChange={() => toggleMapLayer(id)}
-                  />
-                  {label}
-                </label>
-              ))}
+              <span className="map-layer-title">Intelligence Layers</span>
+              <div className="map-layer-list">
+                {[
+                  ['risk', 'Flood Risk'],
+                  ['depth', 'Water Depth'],
+                  ['runoff', 'Rainfall Runoff'],
+                  ['network', 'Drainage Network'],
+                  ['capacity', 'Overloaded Nodes'],
+                  ['terrain', 'DEM Elevation']
+                ].map(([id, label]) => (
+                  <label key={id} className="map-layer-item">
+                    <input
+                      type="checkbox"
+                      checked={activeMapLayers[id] !== false}
+                      onChange={() => toggleMapLayer(id)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="map-glass map-insight-overlay">
-              <span>🌧 Rainfall <strong>{prediction.intensity} mm/hr</strong></span>
-              <span>🌊 Maximum Depth <strong>{prediction.highestWaterDepth} cm</strong></span>
-              <span>🚧 Roads Affected <strong>{affectedRoads}</strong></span>
-            </div>
+
+            {/* Bottom-Left: Compact Flood Depth Legend */}
             <div className="map-glass map-legend-overlay">
-              <span><i className="dash-legend critical" />Critical</span>
-              <span><i className="dash-legend high" />High Risk</span>
-              <span><i className="dash-legend moderate" />Moderate</span>
-              <span><i className="dash-legend safe" />Safe</span>
+              <span className="map-legend-title">Flood Depth</span>
+              <div className="map-legend-grid">
+                <span><i className="dash-legend safe" /> 0–5 cm (Safe)</span>
+                <span><i className="dash-legend low" /> 5–15 cm (Low)</span>
+                <span><i className="dash-legend moderate" /> 15–30 cm (Moderate)</span>
+                <span><i className="dash-legend high" /> 30–50 cm (High)</span>
+                <span><i className="dash-legend critical" /> 50+ cm (Critical)</span>
+              </div>
             </div>
-            <div className="digital-twin-badge">
-              SMART CITY DIGITAL TWIN <span>SIMULATED TERRAIN</span>
-            </div>
+
+            {/* Contextual Operational Inspection Overlay if a location is selected */}
+            {focusedStreetObj && (
+              <div className="map-glass map-inspector-overlay">
+                <div className="map-inspector-head">
+                  <div>
+                    <span className="map-inspector-kicker">SELECTED LOCATION</span>
+                    <strong className="map-inspector-title">{focusedStreetObj.name}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="map-inspector-close"
+                    onClick={() => setFocusedStreet('')}
+                    title="Close inspection"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="map-inspector-grid">
+                  <div>
+                    <span>Current Depth</span>
+                    <strong>{focusedStreetObj.currentWaterDepth} cm</strong>
+                  </div>
+                  <div>
+                    <span>Predicted Peak</span>
+                    <strong className={`risk-${focusedStreetObj.risk.toLowerCase()}`}>{focusedStreetObj.waterDepth} cm</strong>
+                  </div>
+                  <div>
+                    <span>Drainage Load</span>
+                    <strong>{Math.round(prediction.drainage.utilization * 100)}%</strong>
+                  </div>
+                  <div>
+                    <span>Elevation</span>
+                    <strong>{focusedStreetObj.terrain?.elevation} m</strong>
+                  </div>
+                </div>
+                <div className="map-inspector-action">
+                  <span className={`risk-badge ${focusedStreetObj.risk.toLowerCase()}`}>{focusedStreetObj.risk}</span>
+                  <p>{focusedStreetObj.waterDepth >= 60 ? 'Deploy pumps & divert traffic' : focusedStreetObj.waterDepth >= 30 ? 'Emergency response staged' : 'Monitor traffic flow'}</p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="dashboard-map-footer">
-            <span><i className="dash-legend critical" />Critical zone</span>
-            <span><i className="dash-legend high" />High-risk zone</span>
-            <span><i className="dash-legend moderate" />Moderate risk</span>
-            <span><i className="dash-legend safe" />Safe / operational</span>
+            <span><i className="dash-legend safe" /> Safe (0–5 cm)</span>
+            <span><i className="dash-legend low" /> Low (5–15 cm)</span>
+            <span><i className="dash-legend moderate" /> Moderate (15–30 cm)</span>
+            <span><i className="dash-legend high" /> High (30–50 cm)</span>
+            <span><i className="dash-legend critical" /> Critical (50+ cm)</span>
           </div>
         </Panel>
 
         <Panel className="priority-alerts-card">
-          <div className="panel-heading">
+          <div className="priority-alerts-header">
             <div>
-              <span className="eyebrow">RANKED BY SEVERITY</span>
               <h2>Priority Alerts</h2>
+              <span className="priority-alerts-subtitle">Ranked by severity</span>
             </div>
-            <span className="alert-count">{priorityStreets.length} active</span>
+            <span className="alert-count-badge">{priorityStreets.length} active</span>
           </div>
           <div className="dashboard-alert-list">
-            {priorityStreets.map((street, index) => (
-              <article
-                className={`dashboard-alert ${focusedStreet === street.id ? 'selected' : ''}`}
-                key={street.id}
-                onClick={() => setFocusedStreet(street.id)}
-              >
-                <div className="dashboard-alert-top">
-                  <span className="priority-rank-badge">P0{index + 1}</span>
-                  <RiskBadge level={street.risk} />
-                  <span className="depth-badge">{street.waterDepth} cm</span>
-                </div>
-                <h3>{street.name}</h3>
-                <div className="alert-action-pill">
-                  🚨 {street.waterDepth >= 60 ? 'Restrict traffic · Deploy pumps' : street.waterDepth >= 30 ? 'Prepare emergency response' : 'Monitor heavy vehicles'}
-                </div>
-                <button
-                  type="button"
-                  className="alert-inspect-btn"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setFocusedStreet(street.id)
-                  }}
+            {priorityStreets.map((street, index) => {
+              const riskLevel = (street.risk || 'MODERATE').toUpperCase()
+              const actionText = street.waterDepth >= 60
+                ? 'Restrict traffic · Deploy pumps'
+                : street.waterDepth >= 30
+                ? 'Stage emergency response'
+                : 'Monitor traffic flow'
+
+              return (
+                <article
+                  className={`dashboard-alert severity-${riskLevel.toLowerCase()} ${index === 0 ? 'priority-highest' : ''} ${focusedStreet === street.id ? 'selected' : ''}`}
+                  key={street.id}
+                  onClick={() => setFocusedStreet(street.id)}
                 >
-                  Locate on Map <span>→</span>
-                </button>
-              </article>
-            ))}
+                  <div className="dashboard-alert-top">
+                    <span className="priority-rank-tag">P0{index + 1}</span>
+                    <RiskBadge level={riskLevel} />
+                  </div>
+                  <h3 className="alert-location-title">{street.name}</h3>
+                  <div className="alert-depth-stat">
+                    <span className="alert-depth-number">{street.waterDepth} cm</span>
+                    <span className="alert-depth-label">predicted depth</span>
+                  </div>
+                  <div className="alert-action-recommendation">
+                    <span className="alert-action-label">{actionText}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="alert-locate-btn"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setFocusedStreet(street.id)
+                    }}
+                  >
+                    Locate on Map <span>→</span>
+                  </button>
+                </article>
+              )
+            })}
           </div>
-          <Link className="text-link" to="/emergency-response">
-            Open Emergency Response <span>→</span>
-          </Link>
+          <div className="priority-alerts-footer">
+            <Link className="priority-alerts-action-link" to="/emergency-response">
+              Open Emergency Response <span>→</span>
+            </Link>
+          </div>
         </Panel>
       </div>
 

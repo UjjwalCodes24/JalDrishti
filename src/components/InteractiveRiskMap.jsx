@@ -4,9 +4,9 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const wardCoordinates = { W23: [19.0728, 72.8826], W14: [19.0466, 72.8631], W08: [19.1197, 72.8468], W31: [19.0178, 72.8294], W05: [18.9067, 72.8147] }
-const riskColors = { CRITICAL: '#dc2626', Critical: '#dc2626', HIGH: '#ea580c', High: '#ea580c', MODERATE: '#d97706', Moderate: '#d97706', LOW: '#0d9488', Low: '#0d9488', SAFE: '#0d9488', Safe: '#0d9488' }
-const terrainColors = { 'low-lying': '#0284c7', moderate: '#d97706', higher: '#059669' }
-const depthColors = { low: '#38bdf8', moderate: '#fbbf24', critical: '#ef4444' }
+const riskColors = { CRITICAL: '#dc2626', Critical: '#dc2626', HIGH: '#ea580c', High: '#ea580c', MODERATE: '#d97706', Moderate: '#d97706', LOW: '#16a34a', Low: '#16a34a', SAFE: '#16a34a', Safe: '#16a34a' }
+const terrainColors = { 'low-lying': '#0284c7', moderate: '#d97706', higher: '#16a34a' }
+const depthColors = { low: '#0284c7', moderate: '#d97706', critical: '#dc2626' }
 const twinFootprints = [
   [[19.0737, 72.8814], [19.0745, 72.8818], [19.0741, 72.8830], [19.0733, 72.8826]],
   [[19.0778, 72.8780], [19.0788, 72.8784], [19.0783, 72.8796], [19.0774, 72.8792]],
@@ -16,11 +16,7 @@ const twinFootprints = [
   [[19.0560, 72.8700], [19.0569, 72.8703], [19.0566, 72.8713], [19.0557, 72.8710]],
 ]
 
-function getDepthBand(depth) {
-  if (depth >= 30) return 'critical'
-  if (depth >= 10) return 'moderate'
-  return 'low'
-}
+
 
 function getOperationalAction(risk) {
   if (risk === 'CRITICAL') return 'Emergency response required'
@@ -99,16 +95,16 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
               <Polygon
                 key={`twin-building-${index}`}
                 positions={footprint}
-                pathOptions={{ color: '#22d3ee', fillColor: '#0284c7', fillOpacity: 0.28, weight: 1.5 }}
+                pathOptions={{ color: '#0284c7', fillColor: '#0284c7', fillOpacity: 0.12, weight: 1.2 }}
               />
             ))}
             <Polyline
               positions={[[19.082, 72.875], [19.064, 72.869], [19.043, 72.855]]}
-              pathOptions={{ color: '#22d3ee', weight: 2.5, opacity: 0.65, dashArray: '3 7' }}
+              pathOptions={{ color: '#0284c7', weight: 2, opacity: 0.5, dashArray: '4 6' }}
             />
             <Polyline
               positions={[[19.104, 72.889], [19.078, 72.879], [19.063, 72.868]]}
-              pathOptions={{ color: '#7dd3fc', weight: 2.5, opacity: 0.6, dashArray: '2 8' }}
+              pathOptions={{ color: '#0369a1', weight: 2, opacity: 0.45, dashArray: '3 7' }}
             />
           </>
         )}
@@ -141,7 +137,6 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
         })}
         {(show('risk') || show('depth')) && streets.map((street) => {
           const isCritical = street.risk === 'CRITICAL' || street.waterDepth >= 30
-          const color = isCritical ? '#2563eb' : street.waterDepth >= 15 ? '#3b82f6' : '#60a5fa'
           const radius = Math.max(280, Math.min(1100, 280 + street.waterDepth * 7))
           return (
             <Circle
@@ -171,10 +166,10 @@ function InteractiveRiskMap({ wards = [], selectedWard, onSelectWard, prediction
               radius={radius}
               className={`hotspot-circle-marker risk-${street.risk.toLowerCase()}`}
               pathOptions={{
-                color: isCritical ? '#b91c1c' : color,
+                color: '#ffffff',
                 fillColor: color,
-                fillOpacity: 0.88,
-                weight: focusedStreet === street.id ? 4 : isCritical ? 3 : 2
+                fillOpacity: 0.92,
+                weight: focusedStreet === street.id ? 3.5 : 2
               }}
               eventHandlers={{ click: () => onSelectStreet?.(street.id) }}
             >

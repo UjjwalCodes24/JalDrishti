@@ -57,7 +57,7 @@ function SafeRoutePage() {
       })
 
       setRoutingResult(result)
-    } catch (err) {
+    } catch {
       // Automatic fallback on any unexpected error
       const fallback = calculateSafeRoute(startId, destinationId, nextTime, nextMode)
       setRoutingResult({
@@ -73,11 +73,26 @@ function SafeRoutePage() {
   }
 
   useEffect(() => {
-    void handleCalculate()
+    let active = true
+    const { startId, destinationId } = resolveRoadLocationIds(origin, destination)
+
+    calculateGoogleAwareSafeRoute({
+      origin,
+      destination,
+      time: selectedTime,
+      mode: routeType,
+      fallbackStartId: startId,
+      fallbackDestinationId: destinationId,
+    })
+      .then((res) => {
+        if (active) setRoutingResult(res)
+      })
+      .catch(() => {})
+
     return () => {
-      if (loadingIntervalRef.current) clearInterval(loadingIntervalRef.current)
+      active = false
     }
-  }, [])
+  }, [origin, destination, selectedTime, routeType])
 
   const updateRouteTime = async (time) => {
     setSelectedTime(time)

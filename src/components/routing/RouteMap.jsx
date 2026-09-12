@@ -184,7 +184,7 @@ function RouteMap({ routingResult }) {
         if (!bounds.isEmpty()) {
           map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 })
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setMapMode('fallback')
         }

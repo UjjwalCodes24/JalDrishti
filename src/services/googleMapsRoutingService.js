@@ -193,7 +193,7 @@ export function evaluatePolylineAgainstFloodData(polyline, prediction) {
   }
 }
 
-export function calculateRouteSafetyScore(evaluation, distanceKm, durationMin) {
+export function calculateRouteSafetyScore(evaluation) {
   const depthPenalty = Math.min(50, Math.pow(evaluation.maximumWaterDepth / 2.8, 1.35))
   const blockedPenalty = evaluation.blockedCount * 35
   const floodedPenalty = evaluation.floodedCount * 14
