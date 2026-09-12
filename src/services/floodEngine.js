@@ -2,6 +2,7 @@ import { getRegionConfig, DEFAULT_REGION_ID, resolveRegionId } from '../data/reg
 import defaultRainfall from '../data/rainfall.json' with { type: 'json' }
 import { calculateAccumulationPotential, calculateRunoffDemand, calculateSurfaceRunoff } from './terrainService.js'
 import { calculateDrainageStatus } from './drainageService.js'
+import { getRainfallProvider } from './rainfallProvider.js'
 
 
 /**
@@ -87,7 +88,7 @@ export function runFloodEngine(regionOrId = DEFAULT_REGION_ID) {
     : regionOrId || getRegionConfig(DEFAULT_REGION_ID)
 
   const regionId = config.id || DEFAULT_REGION_ID
-  const rainfallData = config.rainfall || defaultRainfall
+  const rainfallData = getRainfallProvider(regionId).getRainfallData() || defaultRainfall
   const streetsData = config.streets || []
   const terrainZones = config.terrain || []
   const drainageNet = config.drainageNetwork
