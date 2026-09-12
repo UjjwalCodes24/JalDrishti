@@ -10,8 +10,8 @@ export function getEmergencySnapshot(time = 'NOW', regionId = 'mumbai') {
   const affected = prediction.streets.filter((street) => street.waterDepth >= 15)
   const critical = prediction.streets.filter((street) => street.risk === 'CRITICAL')
   
-  const origin = region?.defaultOrigin || (network.nodes.length > 0 ? network.nodes[0].name : 'KURLA')
-  const destination = region?.defaultDestination || (network.nodes.length > 1 ? network.nodes[1].name : 'SION')
+  const origin = region?.defaultOrigin || (network.nodes.length > 0 ? network.nodes[0].name : 'Origin')
+  const destination = region?.defaultDestination || (network.nodes.length > 1 ? network.nodes[1].name : 'Destination')
   const route = calculateSafeRoute(origin, destination, time, 'Emergency Vehicle', regionId)
   
   return {

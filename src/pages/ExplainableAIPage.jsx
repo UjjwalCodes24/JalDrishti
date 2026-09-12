@@ -20,7 +20,7 @@ function ExplainableAIPage() {
 
   const activeLocationId = locations.some((l) => l.id === selectedLocation)
     ? selectedLocation
-    : locations[0]?.id || 'ST-KUR-01'
+    : locations[0]?.id || ''
 
   const analysis = useMemo(() => {
     return getExplainabilityData(activeLocationId, selectedTime, selectedRegion)
@@ -80,7 +80,7 @@ function ExplainableAIPage() {
             </div>
             <span className="prototype-label">DEMO / SIMULATED INPUT</span>
           </div>
-          <ConfidencePanel factors={analysis.factors} />
+          <ConfidencePanel factors={analysis.factors} regionId={selectedRegion} />
         </Panel>
       </div>
       <Panel className="xai-chain-panel">

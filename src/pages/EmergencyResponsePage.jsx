@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader, Panel, RiskBadge } from '../components/ui'
 import { useRegion } from '../context/useRegion'
+import { NEUTRAL_MAP_CENTER } from '../data/regions'
 import EmergencyResponseMap from '../components/EmergencyResponseMap'
 import defaultResponseData from '../data/emergencyResponse.json'
 import { getEmergencySnapshot, getRoadDecision } from '../services/emergencyService'
@@ -116,7 +117,7 @@ function EmergencyResponsePage() {
             teamLocations={teamLocations}
             focusedStreet={activeFocusedStreet}
             onFocusStreet={setFocusedStreet}
-            center={currentRegion?.center || [19.076, 72.8777]}
+            center={currentRegion?.center || NEUTRAL_MAP_CENTER}
             zoom={currentRegion?.zoom || 11}
           />
         </Panel>

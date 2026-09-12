@@ -2,10 +2,11 @@ import { useEffect } from 'react'
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { NEUTRAL_MAP_CENTER } from '../data/regions'
 
 const riskColors = { CRITICAL: '#c84b43', HIGH: '#d9982f', MODERATE: '#d9982f', LOW: '#2f7f9d' }
 
-function focusTarget(map, focusedStreet, streets, center = [19.076, 72.8777], zoom = 11) {
+function focusTarget(map, focusedStreet, streets, center = NEUTRAL_MAP_CENTER, zoom = 11) {
   const street = streets.find((item) => item.id === focusedStreet)
   if (street) {
     map.flyTo([street.latitude, street.longitude], 14, { duration: 0.7 })
@@ -26,7 +27,7 @@ function responseIcon(label, color) {
   return L.divIcon({ className: 'response-marker-wrapper', html: `<span class="response-marker" style="--marker-color:${color}">${label}</span>`, iconSize: [32, 32], iconAnchor: [16, 16] })
 }
 
-function EmergencyResponseMap({ streets, safeRoute, teamLocations, focusedStreet, onFocusStreet, center = [19.076, 72.8777], zoom = 11 }) {
+function EmergencyResponseMap({ streets, safeRoute, teamLocations, focusedStreet, onFocusStreet, center = NEUTRAL_MAP_CENTER, zoom = 11 }) {
   return (
     <div className="response-map-wrap">
       <MapContainer center={center} zoom={zoom} scrollWheelZoom className="response-map">

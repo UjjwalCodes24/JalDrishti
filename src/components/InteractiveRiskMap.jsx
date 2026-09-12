@@ -2,8 +2,9 @@ import { Fragment, useEffect } from 'react'
 import { Circle, CircleMarker, MapContainer, Marker, Polygon, Popup, Polyline, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { NEUTRAL_MAP_CENTER } from '../data/regions'
 
-const defaultWardCoordinates = { W23: [19.0728, 72.8826], W14: [19.0466, 72.8631], W08: [19.1197, 72.8468], W31: [19.0178, 72.8294], W05: [18.9067, 72.8147] }
+const defaultWardCoordinates = {}
 const riskColors = { CRITICAL: '#dc2626', Critical: '#dc2626', HIGH: '#ea580c', High: '#ea580c', MODERATE: '#d97706', Moderate: '#d97706', LOW: '#16a34a', Low: '#16a34a', SAFE: '#16a34a', Safe: '#16a34a' }
 const terrainColors = { 'low-lying': '#0284c7', moderate: '#d97706', higher: '#16a34a' }
 const depthColors = { low: '#0284c7', moderate: '#d97706', critical: '#dc2626' }
@@ -23,7 +24,7 @@ function getOperationalAction(risk) {
   return 'Normal monitoring'
 }
 
-function MapFocus({ wardId, focusedStreet, streets, center = [19.076, 72.8777], zoom = 11, wardCoords = defaultWardCoordinates }) {
+function MapFocus({ wardId, focusedStreet, streets, center = NEUTRAL_MAP_CENTER, zoom = 11, wardCoords = defaultWardCoordinates }) {
   const map = useMap()
   useEffect(() => {
     const street = streets.find((item) => item.id === focusedStreet)
@@ -84,7 +85,7 @@ function InteractiveRiskMap({
   focusedStreet,
   onSelectStreet,
   digitalTwin = false,
-  center = [19.076, 72.8777],
+  center = NEUTRAL_MAP_CENTER,
   zoom = 11,
   wardCoordinates: propWardCoordinates
 }) {

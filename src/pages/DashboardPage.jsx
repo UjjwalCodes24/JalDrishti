@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { useRegion } from '../context/useRegion'
+import { NEUTRAL_MAP_CENTER } from '../data/regions'
 import wardsData from '../data/wards.json'
 import terrainData from '../data/terrain.json'
 import drainageNetworkData from '../data/drainageNetwork.json'
@@ -205,7 +206,7 @@ function DashboardPage() {
               focusedStreet={focusedStreet}
               onSelectStreet={setFocusedStreet}
               digitalTwin
-              center={currentRegion?.center || [19.076, 72.8777]}
+              center={currentRegion?.center || NEUTRAL_MAP_CENTER}
               zoom={currentRegion?.zoom || 11}
               wardCoordinates={currentRegion?.wardCoordinates}
             />

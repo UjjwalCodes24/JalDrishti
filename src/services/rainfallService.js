@@ -1,13 +1,13 @@
 import { getRainfallInput } from './dataSourceService'
 
-export function getRainfallObservations() {
-  return getRainfallInput().observations
+export function getRainfallObservations(regionId) {
+  return getRainfallInput(regionId).observations
 }
 
-export function getRainfallForecast() {
-  return getRainfallInput().forecast
+export function getRainfallForecast(regionId) {
+  return getRainfallInput(regionId).forecast
 }
 
-export function getRainfallSourceStatus() {
-  return getRainfallInput().dataSource
+export function getRainfallSourceStatus(regionId) {
+  return getRainfallInput(regionId).dataSource
 }

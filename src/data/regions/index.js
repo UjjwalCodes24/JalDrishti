@@ -15,18 +15,39 @@ export const REGION_LIST = [
   { id: 'chennai', name: 'Chennai Metropolitan Area', shortName: 'Chennai', state: 'Tamil Nadu', isDefault: false }
 ]
 
+/**
+ * Stable region IDs (aliases for the canonical lowercase slugs).
+ * Consumers should prefer these constants over raw strings.
+ */
+export const REGION_IDS = {
+  DELHI_NCR: 'delhi',
+  DELHI: 'delhi',
+  MUMBAI_MM: 'mumbai',
+  MUMBAI: 'mumbai',
+  CHENNAI_MM: 'chennai',
+  CHENNAI: 'chennai',
+}
+
 export const DEFAULT_REGION_ID = 'mumbai'
+
+// Neutral India-centric fallback used only when a region config omits its center.
+export const NEUTRAL_MAP_CENTER = [20.5937, 78.9629]
 
 const REGION_ALIASES = {
   mumbai: 'mumbai',
   'mumbai metropolitan area': 'mumbai',
+  'mumbai mm': 'mumbai',
+  'mumbai_mm': 'mumbai',
   mmr: 'mumbai',
   delhi: 'delhi',
   'delhi ncr': 'delhi',
+  'delhi_ncr': 'delhi',
   'new delhi': 'delhi',
   ncr: 'delhi',
   chennai: 'chennai',
   'chennai metropolitan area': 'chennai',
+  'chennai mm': 'chennai',
+  'chennai_mm': 'chennai',
 }
 
 export function resolveRegionId(regionId = DEFAULT_REGION_ID) {

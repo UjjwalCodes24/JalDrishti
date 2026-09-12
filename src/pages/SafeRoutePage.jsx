@@ -33,24 +33,14 @@ function SafeRoutePage() {
   const [loading, setLoading] = useState(false)
   const [loadingStepIdx, setLoadingStepIdx] = useState(0)
 
-  useEffect(() => {
-    setCustomOrigin('')
-    setCustomDestination('')
-    const defaults = getSafeRouteDataset(regionId)
-    const { startId, destinationId } = resolveRoadLocationIds(defaults.defaultOrigin, defaults.defaultDestination, regionId)
-    setRoutingResult(calculateSafeRoute(startId, destinationId, selectedTime, routeType, regionId))
-    // Intentionally depend only on regionId so a city switch clears O/D without resetting when the user changes time or mode.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regionId])
-
-  const regionLocationNames = new Set(locations.map((location) => location.name))
-  const origin = regionLocationNames.has(customOrigin) ? customOrigin : (routeDataset.defaultOrigin || locations[0]?.name || 'Origin')
-  const destination = regionLocationNames.has(customDestination) ? customDestination : (routeDataset.defaultDestination || locations[1]?.name || 'Destination')
-
   const [routingResult, setRoutingResult] = useState(() => {
     const { startId, destinationId } = resolveRoadLocationIds(routeDataset.defaultOrigin, routeDataset.defaultDestination, regionId)
     return calculateSafeRoute(startId, destinationId, 'NOW', 'Emergency Vehicle', regionId)
   })
+
+  const regionLocationNames = new Set(locations.map((location) => location.name))
+  const origin = regionLocationNames.has(customOrigin) ? customOrigin : (routeDataset.defaultOrigin || locations[0]?.name || 'Origin')
+  const destination = regionLocationNames.has(customDestination) ? customDestination : (routeDataset.defaultDestination || locations[1]?.name || 'Destination')
 
   const loadingIntervalRef = useRef(null)
   const forecast = useMemo(() => getFloodForecast(regionId), [regionId])
