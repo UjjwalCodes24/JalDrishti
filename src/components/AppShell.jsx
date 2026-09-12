@@ -2,7 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 
 const navigation = [
-  { to: '/', label: 'Dashboard', icon: '⌂', end: true },
+  { to: '/dashboard', label: 'Dashboard', icon: '⌂', end: true },
   { to: '/risk-map', label: 'Flood Risk Map', icon: '⌖' },
   { to: '/safe-routes', label: 'Flood-Safe Routes', icon: '⇢' },
   { to: '/nowcast', label: 'AI Nowcast', icon: '◒' },
@@ -24,7 +24,7 @@ function AppShell() {
       <aside className="sidebar">
         <div className="brand-mark"><span>◒</span><div><strong>JalDrishti</strong><small>Flood intelligence</small></div></div>
         <nav className="main-nav" aria-label="Primary navigation">
-          {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive }) => (isActive || (item.to === '/' && location.pathname === '/dashboard')) ? 'nav-link active' : 'nav-link'}><span className="nav-icon">{item.icon}</span>{item.label}</NavLink>)}
+          {navigation.map((item) => <NavLink key={item.to} to={item.to} end={item.end} title={item.label} className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span className="nav-icon">{item.icon}</span>{item.label}</NavLink>)}
         </nav>
         <div className="sidebar-note"><span className="status-dot" /> System operational<p>Prototype environment</p></div>
       </aside>
